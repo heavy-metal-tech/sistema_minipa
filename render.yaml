@@ -1,6 +1,6 @@
 services:
   - type: web
     name: sistema-minipa
-    runtime: python
+    runtime: python  # Esta linha é essencial!
     buildCommand: pip install -r requirements.txt
     startCommand: python setup_db.py && gunicorn app:app
