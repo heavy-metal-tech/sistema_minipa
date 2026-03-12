@@ -4,13 +4,13 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_secret_2026'
+app.config['SECRET_KEY'] = 'minipa_2026_tech'
 
-# --- CONFIGURAÇÃO DE CAMINHO ROBUSTA ---
+# Caminhos robustos para Linux/Render
 basedir = os.path.abspath(os.path.dirname(__file__))
 instance_path = os.path.join(basedir, 'instance')
 
-# Garante que a pasta instance exista no servidor Linux
+# Força a criação da pasta se o Render não a encontrar
 if not os.path.exists(instance_path):
     os.makedirs(instance_path)
 
@@ -36,17 +36,15 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        # Tenta buscar o usuário, se o banco não existir, o erro 500 daria aqui
         try:
             user = User.query.filter_by(username=username).first()
             if user and user.password == password:
                 login_user(user)
                 return redirect(url_for('dashboard'))
-            flash('Usuário ou senha inválidos')
+            flash('Usuário ou senha incorretos.')
         except Exception as e:
-            flash('Erro de conexão com o banco. Tente novamente em instantes.')
-            print(f"Erro: {e}")
-            
+            print(f"Erro de Banco: {e}")
+            flash('Erro técnico no banco de dados. Aguarde o deploy finalizar.')
     return render_template('login.html')
 
 @app.route('/dashboard')
