@@ -6,9 +6,10 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'minipa_secret_2026'
 
-# --- AJUSTE DE CAMINHO PARA O RENDER ---
+# Configuração de caminho para o Render (Linux)
 basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'instance', 'minipa_os.db')
+instance_path = os.path.join(basedir, 'instance')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_path, 'minipa_os.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -20,28 +21,26 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password = db.Column(db.String(50), nullable=False)
-    cargo = db.Column(db.String(20), nullable=False) # 'admin' ou 'tecnico'
+    cargo = db.Column(db.String(20), nullable=False)
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-@app.route('/')
+# Rota unificada para evitar erro 405
+@app.route('/', methods=['GET', 'POST'])
 def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        user = User.query.filter_by(username=username).first()
+
+        if user and user.password == password:
+            login_user(user)
+            return redirect(url_for('dashboard'))
+        
+        flash('Usuário ou senha inválidos')
     return render_template('login.html')
-
-@app.route('/login', methods=['POST'])
-def login_post():
-    username = request.form.get('username')
-    password = request.form.get('password')
-    user = User.query.filter_by(username=username).first()
-
-    if user and user.password == password:
-        login_user(user)
-        return redirect(url_for('dashboard'))
-    
-    flash('Usuário ou senha inválidos')
-    return redirect(url_for('login'))
 
 @app.route('/dashboard')
 @login_required
@@ -55,7 +54,6 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    # Cria a pasta instance se não existir
-    if not os.path.exists(os.path.join(basedir, 'instance')):
-        os.makedirs(os.path.join(basedir, 'instance'))
+    if not os.path.exists(instance_path):
+        os.makedirs(instance_path)
     app.run(debug=True)
