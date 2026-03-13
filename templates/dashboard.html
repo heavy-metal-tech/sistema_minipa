@@ -2,378 +2,86 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minipa Precision | Nova Ordem de <!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minipa Precision | Nova Ordem de Serviço</title>
+    <title>Minipa Precision | Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        :root {
-            --minipa-blue: #0d47a1;
-            --minipa-red: #d32f2f;
-            --tech-gray: #f8f9fa;
-            --border-color: #dee2e6;
-        }
-        body { 
-            background-color: #eef2f7; 
-            font-family: 'Inter', 'Segoe UI', sans-serif; 
-        }
-        
-        /* Navbar Superior */
-        .navbar { 
-            background: white; 
-            border-bottom: 4px solid var(--minipa-blue);
-            padding: 10px 0;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-        }
-        .navbar-brand img { height: 45px; }
-
-        /* Card Central */
-        .card-tech {
-            background: white;
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-            overflow: hidden;
-            margin-top: 30px;
-        }
-        .card-header-tech {
-            background: var(--minipa-blue);
-            color: white;
-            padding: 20px;
-            text-align: center;
-            font-weight: 700;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-        }
-
-        /* Estilo dos Inputs */
-        .form-label {
-            font-size: 0.85rem;
-            font-weight: 700;
-            color: #495057;
-            text-transform: uppercase;
-            margin-bottom: 5px;
-        }
-        .form-control, .form-select {
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 12px;
-            background-color: var(--tech-gray);
-            transition: all 0.3s;
-        }
-        .form-control:focus {
-            background-color: white;
-            border-color: var(--minipa-blue);
-            box-shadow: 0 0 0 4px rgba(13, 71, 161, 0.1);
-        }
-
-        /* Botões */
-        .btn-save {
-            background: var(--minipa-blue);
-            color: white;
-            border: none;
-            padding: 15px;
-            border-radius: 10px;
-            font-weight: 800;
-            transition: 0.3s;
-            width: 100%;
-        }
-        .btn-save:hover {
-            background: #0a3a85;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(13, 71, 161, 0.3);
-        }
-        .btn-cancel {
-            background: #fff;
-            color: #6c757d;
-            border: 1px solid var(--border-color);
-            padding: 15px;
-            border-radius: 10px;
-            font-weight: 600;
-            width: 100%;
-            text-decoration: none;
-            display: inline-block;
-            text-align: center;
-        }
-        .btn-cancel:hover { background: #f8f9fa; color: #333; }
-
-        /* Ícones nos Inputs */
-        .input-group-text {
-            background-color: white;
-            border-right: none;
-            color: var(--minipa-blue);
-        }
-        .form-control-with-icon { border-left: none; }
+        :root { --minipa-blue: #0d47a1; --minipa-red: #d32f2f; }
+        .navbar { border-bottom: 4px solid var(--minipa-blue); background: white; }
+        .navbar-brand img { height: 50px; }
+        .card-header-minipa { background: var(--minipa-blue); color: white; font-weight: bold; }
+        .btn-pdf-geral { background: #333; color: white; font-weight: bold; }
     </style>
 </head>
-<body>
+<body class="bg-light">
 
-<nav class="navbar navbar-light">
-    <div class="container d-flex justify-content-center">
-        <a class="navbar-brand" href="{{ url_for('dashboard') }}">
-            <img src="{{ url_for('static', filename='logo.png') }}" alt="Minipa Logo">
-        </a>
+<nav class="navbar navbar-light mb-4 shadow-sm">
+    <div class="container d-flex justify-content-between">
+        <a class="navbar-brand" href="#"><img src="{{ url_for('static', filename='logo.png') }}"></a>
+        <div class="d-flex align-items-center">
+            <span class="badge bg-primary p-2 me-3"><i class="fas fa-user-gear"></i> {{ current_user.nome_completo }}</span>
+            <a href="{{ url_for('pdf_estoque') }}" class="btn btn-pdf-geral btn-sm me-2"><i class="fas fa-file-pdf"></i> RELATÓRIO ESTOQUE</a>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm">Sair</a>
+        </div>
     </div>
 </nav>
 
-<div class="container mb-5">
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card-tech">
-                <div class="card-header-tech">
-                    <i class="fas fa-file-signature me-2"></i> Registro de Entrada de Equipamento
-                </div>
-                <div class="card-body p-4 p-md-5">
-                    <form method="POST">
-                        <div class="mb-4">
-                            <label class="form-label"><i class="fas fa-building me-1"></i> Cliente / Empresa</label>
-                            <input type="text" name="cliente" class="form-control" placeholder="Razão Social ou Nome do Cliente" required>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-7 mb-4">
-                                <label class="form-label"><i class="fas fa-microchip me-1"></i> Equipamento</label>
-                                <input type="text" name="equipamento" class="form-control" placeholder="Ex: Multímetro ET-2042E" required>
-                            </div>
-                            <div class="col-md-5 mb-4">
-                                <label class="form-label"><i class="fas fa-barcode me-1"></i> Nº de Série (S/N)</label>
-                                <input type="text" name="serie" class="form-control" placeholder="Número de Série" required>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-4 mb-4">
-                                <label class="form-label"><i class="fas fa-receipt me-1"></i> Nota Fiscal</label>
-                                <input type="text" name="nota_fiscal" class="form-control" placeholder="Nº NF">
-                            </div>
-                            <div class="col-md-4 mb-4">
-                                <label class="form-label"><i class="fas fa-shield-alt me-1"></i> Garantia</label>
-                                <select name="garantia" class="form-select">
-                                    <option value="Não">Fora de Garantia</option>
-                                    <option value="Sim">Em Garantia</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4 mb-4">
-                                <label class="form-label"><i class="fas fa-dollar-sign me-1"></i> Orçamento Prévio</label>
-                                <input type="text" name="valor" class="form-control" placeholder="R$ 0,00">
-                            </div>
-                        </div>
-
-                        <div class="mb-5">
-                            <label class="form-label"><i class="fas fa-exclamation-triangle me-1"></i> Descrição do Defeito / Observações</label>
-                            <textarea name="defeito" class="form-control" rows="4" placeholder="Descreva os sintomas apresentados pelo equipamento..."></textarea>
-                        </div>
-
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <a href="{{ url_for('dashboard') }}" class="btn btn-cancel">
-                                    <i class="fas fa-arrow-left me-2"></i>Voltar ao Painel
-                                </a>
-                            </div>
-                            <div class="col-md-6">
-                                <button type="submit" class="btn btn-save shadow">
-                                    <i class="fas fa-check-circle me-2"></i>FINALIZAR REGISTRO
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-            <p class="text-center mt-4 text-muted small">
-                Este registro será vinculado ao técnico: <strong>{{ current_user.nome_completo }}</strong>
-            </p>
+<div class="container">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between">
+            <h2 class="fw-bold text-dark">Monitor de Bancada</h2>
+            <a href="{{ url_for('nova_os') }}" class="btn btn-danger btn-lg shadow"><i class="fas fa-plus"></i> NOVA OS</a>
         </div>
     </div>
-</div>
 
-</body>
-</html>Serviço</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --minipa-blue: #0d47a1;
-            --minipa-red: #d32f2f;
-            --tech-gray: #f8f9fa;
-            --border-color: #dee2e6;
-        }
-        body { 
-            background-color: #eef2f7; 
-            font-family: 'Inter', 'Segoe UI', sans-serif; 
-        }
-        
-        /* Navbar Superior */
-        .navbar { 
-            background: white; 
-            border-bottom: 4px solid var(--minipa-blue);
-            padding: 10px 0;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-        }
-        .navbar-brand img { height: 45px; }
-
-        /* Card Central */
-        .card-tech {
-            background: white;
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-            overflow: hidden;
-            margin-top: 30px;
-        }
-        .card-header-tech {
-            background: var(--minipa-blue);
-            color: white;
-            padding: 20px;
-            text-align: center;
-            font-weight: 700;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-        }
-
-        /* Estilo dos Inputs */
-        .form-label {
-            font-size: 0.85rem;
-            font-weight: 700;
-            color: #495057;
-            text-transform: uppercase;
-            margin-bottom: 5px;
-        }
-        .form-control, .form-select {
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 12px;
-            background-color: var(--tech-gray);
-            transition: all 0.3s;
-        }
-        .form-control:focus {
-            background-color: white;
-            border-color: var(--minipa-blue);
-            box-shadow: 0 0 0 4px rgba(13, 71, 161, 0.1);
-        }
-
-        /* Botões */
-        .btn-save {
-            background: var(--minipa-blue);
-            color: white;
-            border: none;
-            padding: 15px;
-            border-radius: 10px;
-            font-weight: 800;
-            transition: 0.3s;
-            width: 100%;
-        }
-        .btn-save:hover {
-            background: #0a3a85;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(13, 71, 161, 0.3);
-        }
-        .btn-cancel {
-            background: #fff;
-            color: #6c757d;
-            border: 1px solid var(--border-color);
-            padding: 15px;
-            border-radius: 10px;
-            font-weight: 600;
-            width: 100%;
-            text-decoration: none;
-            display: inline-block;
-            text-align: center;
-        }
-        .btn-cancel:hover { background: #f8f9fa; color: #333; }
-
-        /* Ícones nos Inputs */
-        .input-group-text {
-            background-color: white;
-            border-right: none;
-            color: var(--minipa-blue);
-        }
-        .form-control-with-icon { border-left: none; }
-    </style>
-</head>
-<body>
-
-<nav class="navbar navbar-light">
-    <div class="container d-flex justify-content-center">
-        <a class="navbar-brand" href="{{ url_for('dashboard') }}">
-            <img src="{{ url_for('static', filename='logo.png') }}" alt="Minipa Logo">
-        </a>
+    <div class="card shadow-sm mb-5">
+        <div class="card-header card-header-minipa">Serviços em Execução</div>
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>ID</th><th>Cliente</th><th>Equipamento</th><th>Valor</th><th>Ações</th></tr>
+            </thead>
+            <tbody>
+                {% for os in ordens %}
+                <tr>
+                    <td>#{{ os.id }}</td>
+                    <td><strong>{{ os.cliente }}</strong></td>
+                    <td>{{ os.equipamento }}</td>
+                    <td class="text-success fw-bold">R$ {{ os.valor }}</td>
+                    <td><a href="{{ url_for('pdf_os', id=os.id) }}" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
-</nav>
 
-<div class="container mb-5">
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card-tech">
-                <div class="card-header-tech">
-                    <i class="fas fa-file-signature me-2"></i> Registro de Entrada de Equipamento
-                </div>
-                <div class="card-body p-4 p-md-5">
-                    <form method="POST">
-                        <div class="mb-4">
-                            <label class="form-label"><i class="fas fa-building me-1"></i> Cliente / Empresa</label>
-                            <input type="text" name="cliente" class="form-control" placeholder="Razão Social ou Nome do Cliente" required>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-7 mb-4">
-                                <label class="form-label"><i class="fas fa-microchip me-1"></i> Equipamento</label>
-                                <input type="text" name="equipamento" class="form-control" placeholder="Ex: Multímetro ET-2042E" required>
-                            </div>
-                            <div class="col-md-5 mb-4">
-                                <label class="form-label"><i class="fas fa-barcode me-1"></i> Nº de Série (S/N)</label>
-                                <input type="text" name="serie" class="form-control" placeholder="Número de Série" required>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-4 mb-4">
-                                <label class="form-label"><i class="fas fa-receipt me-1"></i> Nota Fiscal</label>
-                                <input type="text" name="nota_fiscal" class="form-control" placeholder="Nº NF">
-                            </div>
-                            <div class="col-md-4 mb-4">
-                                <label class="form-label"><i class="fas fa-shield-alt me-1"></i> Garantia</label>
-                                <select name="garantia" class="form-select">
-                                    <option value="Não">Fora de Garantia</option>
-                                    <option value="Sim">Em Garantia</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4 mb-4">
-                                <label class="form-label"><i class="fas fa-dollar-sign me-1"></i> Orçamento Prévio</label>
-                                <input type="text" name="valor" class="form-control" placeholder="R$ 0,00">
-                            </div>
-                        </div>
-
-                        <div class="mb-5">
-                            <label class="form-label"><i class="fas fa-exclamation-triangle me-1"></i> Descrição do Defeito / Observações</label>
-                            <textarea name="defeito" class="form-control" rows="4" placeholder="Descreva os sintomas apresentados pelo equipamento..."></textarea>
-                        </div>
-
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <a href="{{ url_for('dashboard') }}" class="btn btn-cancel">
-                                    <i class="fas fa-arrow-left me-2"></i>Voltar ao Painel
-                                </a>
-                            </div>
-                            <div class="col-md-6">
-                                <button type="submit" class="btn btn-save shadow">
-                                    <i class="fas fa-check-circle me-2"></i>FINALIZAR REGISTRO
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-dark text-white">Inventário de Peças</div>
+                <table class="table table-sm">
+                    <thead><tr><th>Peça</th><th>Qtd</th><th>Local</th></tr></thead>
+                    <tbody>
+                        {% for item in estoque %}
+                        <tr><td>{{ item.componente }}</td><td>{{ item.quantidade }}</td><td>{{ item.posicao }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-            <p class="text-center mt-4 text-muted small">
-                Este registro será vinculado ao técnico: <strong>{{ current_user.nome_completo }}</strong>
-            </p>
         </div>
+        {% if current_user.is_admin %}
+        <div class="col-md-4">
+            <div class="card p-3 shadow-sm border-primary">
+                <h6 class="fw-bold">Novo Técnico</h6>
+                <form action="{{ url_for('novo_tecnico') }}" method="POST">
+                    <input type="text" name="nome" class="form-control mb-2" placeholder="Nome Completo">
+                    <input type="text" name="username" class="form-control mb-2" placeholder="Login">
+                    <input type="password" name="password" class="form-control mb-2" placeholder="Senha">
+                    <button type="submit" class="btn btn-primary w-100 btn-sm">Cadastrar</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
-
 </body>
 </html>
