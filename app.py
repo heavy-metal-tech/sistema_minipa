@@ -9,9 +9,11 @@ from reportlab.lib.pagesizes import A4
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'quantum_minipa_2026'
 
-# Localização do Banco - Garantindo persistência no Render
+# Caminho absoluto para evitar perda de dados no Render
 basedir = os.path.abspath(os.path.dirname(__file__))
 db_path = os.path.join(basedir, 'instance', 'minipa_os.db')
+if not os.path.exists(os.path.dirname(db_path)): os.makedirs(os.path.dirname(db_path))
+
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -19,7 +21,7 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- ENTIDADES (Database) ---
+# --- MODELOS ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -46,7 +48,7 @@ class Estoque(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- PROCESSAMENTO DE ROTAS ---
+# --- ROTAS ---
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -54,13 +56,12 @@ def login():
         if user and check_password_hash(user.password, request.form.get('password')):
             login_user(user)
             return redirect(url_for('dashboard'))
-        flash('Acesso negado: Credenciais quânticas incorretas.')
+        flash('Credenciais inválidas.')
     return render_template('login.html')
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # Carregamento explícito de dados
     os_list = OrdemServico.query.order_by(OrdemServico.id.desc()).all()
     stock_list = Estoque.query.all()
     return render_template('dashboard.html', ordens=os_list, estoque=stock_list)
@@ -91,19 +92,15 @@ def gerar_pdf(os_id):
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     p.setFont("Helvetica-Bold", 16)
-    p.drawString(100, 800, "MINIPA - RELATÓRIO TÉCNICO DE BANCADA")
+    p.drawString(100, 800, "MINIPA - RELATÓRIO TÉCNICO")
     p.setFont("Helvetica", 12)
     p.drawString(100, 770, f"OS: #{os_data.id} | Cliente: {os_data.cliente}")
-    p.drawString(100, 750, f"Modelo: {os_data.equipamento} | S/N: {os_data.serie}")
-    p.drawString(100, 730, f"Técnico: {os_data.tecnico}")
+    p.drawString(100, 750, f"Equipamento: {os_data.equipamento} | S/N: {os_data.serie}")
+    p.drawString(100, 730, f"Valor: R$ {os_data.valor} | Técnico: {os_data.tecnico}")
     p.showPage()
     p.save()
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name=f"OS_{os_id}_Minipa.pdf")
-
-@app.route('/logout')
-def logout():
-    logout_user(); return redirect(url_for('login'))
 
 if __name__ == '__main__':
     app.run(debug=True)
