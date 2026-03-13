@@ -1,74 +1,29 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <title>Minipa OS - Dashboard</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        :root { --primary: #004a99; --secondary: #0073e6; --red: #d32f2f; --bg: #f0f2f5; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: var(--bg); }
-        .sidebar { width: 250px; background: var(--primary); height: 100vh; color: white; position: fixed; }
-        .sidebar-header { background: white; padding: 20px; text-align: center; }
-        .sidebar-header img { max-width: 150px; }
-        .nav-item { padding: 15px 25px; display: block; color: white; text-decoration: none; transition: 0.3s; }
-        .nav-item:hover { background: var(--secondary); }
-        .main { margin-left: 250px; width: 100%; padding: 30px; }
-        .card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 30px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th { text-align: left; padding: 12px; border-bottom: 2px solid #eee; color: #666; }
-        td { padding: 12px; border-bottom: 1px solid #eee; }
-        .status { padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
-        .status-pendente { background: #fff3cd; color: #856404; }
-        .btn-new { background: var(--primary); color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <div class="sidebar">
-        <div class="sidebar-header"><img src="{{ url_for('static', filename='minipa.png') }}"></div>
-        <nav style="margin-top: 20px;">
-            <a href="#" class="nav-item"><i class="fas fa-chart-line"></i> Dashboard</a>
-            <a href="{{ url_for('nova_os') }}" class="nav-item"><i class="fas fa-plus"></i> Nova O.S.</a>
-            <a href="/logout" class="nav-item"><i class="fas fa-sign-out-alt"></i> Sair</a>
-        </nav>
-    </div>
-    <main class="main">
-        <h2>Painel de Gestão - Bancada de Eletrônica</h2>
-        
-        <div class="card">
-            <div style="display: flex; justify-content: space-between;">
-                <h3>Ordens de Serviço</h3>
-                <a href="{{ url_for('nova_os') }}" class="btn-new">Nova O.S.</a>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th><th>Equipamento</th><th>Série</th><th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for os in ordens %}
-                    <tr>
-                        <td>#{{ os.id }}</td><td>{{ os.equipamento }}</td><td>{{ os.serie }}</td>
-                        <td><span class="status status-pendente">{{ os.status }}</span></td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        <div class="card" style="border-top: 5px solid var(--red);">
-            <h3><i class="fas fa-exclamation-triangle" style="color: var(--red);"></i> Alerta de Estoque</h3>
-            <table>
-                <thead>
-                    <tr><th>Item</th><th>Qtd Atual</th><th>Ação</th></tr>
-                </thead>
-                <tbody>
-                    {% for p in pecas %}
-                    <tr><td>{{ p.item }}</td><td><strong style="color:red">{{ p.quantidade }}</strong></td><td>Comprar</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </main>
-</body>
-</html>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Equipamento</th>
+            <th>Série</th>
+            <th>Garantia</th>
+            <th>Ações</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for os in ordens %}
+        <tr>
+            <td>#{{ os.id }}</td>
+            <td>{{ os.equipamento }}</td>
+            <td>{{ os.serie }}</td>
+            <td>{{ os.garantia }}</td>
+            <td>
+                <a href="{{ url_for('gerar_pdf', os_id=os.id) }}" title="Baixar PDF" style="color: #d32f2f; margin-right: 10px;">
+                    <i class="fas fa-file-pdf"></i>
+                </a>
+                <a href="{{ url_for('enviar_minipa', os_id=os.id) }}" title="Enviar para Matriz" style="color: #004a99;">
+                    <i class="fas fa-paper-plane"></i>
+                </a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
