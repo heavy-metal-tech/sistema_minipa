@@ -56,7 +56,7 @@ def login():
         if user and check_password_hash(user.password, request.form.get('password')):
             login_user(user)
             return redirect(url_for('dashboard'))
-        flash('Credenciais inválidas.')
+        flash('Usuário ou senha inválidos.')
     return render_template('login.html')
 
 @app.route('/dashboard')
@@ -88,7 +88,8 @@ def nova_os():
 @app.route('/cadastrar_tecnico', methods=['GET', 'POST'])
 @login_required
 def cadastrar_tecnico():
-    if not current_user.is_admin: return redirect(url_for('dashboard'))
+    if not current_user.is_admin:
+        return redirect(url_for('dashboard'))
     if request.method == 'POST':
         hashed_pw = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
         novo = User(username=request.form.get('username'), password=hashed_pw, 
@@ -105,16 +106,16 @@ def gerar_pdf(os_id):
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     p.setFont("Helvetica-Bold", 16)
-    p.drawString(100, 800, "RELATÓRIO TÉCNICO MINIPA")
+    p.drawString(100, 800, "MINIPA - RELATÓRIO TÉCNICO")
     p.setFont("Helvetica", 12)
-    p.drawString(100, 770, f"OS: #{os_data.id} - Cliente: {os_data.cliente}")
-    p.drawString(100, 750, f"Equipamento: {os_data.equipamento} - S/N: {os_data.serie}")
-    p.drawString(100, 730, f"Defeito: {os_data.defeito}")
+    p.drawString(100, 770, f"OS: #{os_data.id} | Cliente: {os_data.cliente}")
+    p.drawString(100, 750, f"Equipamento: {os_data.equipamento} | S/N: {os_data.serie}")
+    p.drawString(100, 730, f"Garantia: {os_data.garantia} | Valor: R$ {os_data.valor}")
     p.drawString(100, 710, f"Técnico: {os_data.tecnico}")
     p.showPage()
     p.save()
     buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name=f"OS_{os_id}.pdf")
+    return send_file(buffer, as_attachment=True, download_name=f"OS_{os_id}_Minipa.pdf")
 
 @app.route('/logout')
 def logout():
