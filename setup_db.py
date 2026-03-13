@@ -2,14 +2,21 @@ from app import app, db, User, Estoque
 from werkzeug.security import generate_password_hash
 
 with app.app_context():
-    db.drop_all() # Cuidado: Isso limpa o banco para garantir o novo padrão
+    db.drop_all() # Reset para aplicar a nova coluna 'is_admin'
     db.create_all()
     
-    # Usuário Padrão
-    pw = generate_password_hash('123', method='pbkdf2:sha256')
-    db.session.add(User(username='will', password=pw, nome_completo='Will - Técnico Master'))
+    # Criando VOCÊ como ADMINISTRADOR
+    admin_pw = generate_password_hash('123', method='pbkdf2:sha256')
+    admin = User(
+        username='will', 
+        password=admin_pw, 
+        nome_completo='Will - Administrador Master',
+        is_admin=True # VOCÊ TEM O PODER TOTAL
+    )
+    db.session.add(admin)
     
-    # Estoque Padrão
-    db.session.add(Estoque(item='Ponta de Prova MTL-1', quantidade=10))
+    # Estoque inicial
+    db.session.add(Estoque(item='Pilha 9V Alcalina', quantidade=10))
+    
     db.session.commit()
-    print("Banco de dados padronizado e pronto!")
+    print("Banco de dados pronto! Usuário Will definido como Admin.")
