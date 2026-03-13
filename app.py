@@ -7,7 +7,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_corp_2026'
+app.config['SECRET_KEY'] = 'minipa_2026_tech'
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 instance_path = os.path.join(basedir, 'instance')
@@ -38,7 +38,6 @@ class OrdemServico(db.Model):
     valor = db.Column(db.String(20))
     defeito = db.Column(db.Text)
     tecnico = db.Column(db.String(100))
-    status = db.Column(db.String(20), default='Pendente')
 
 class Estoque(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -58,6 +57,17 @@ def login():
             return redirect(url_for('dashboard'))
         flash('Usuário ou senha inválidos.')
     return render_template('login.html')
+
+@app.route('/alterar_senha', methods=['GET', 'POST'])
+@login_required
+def alterar_senha():
+    if request.method == 'POST':
+        nova_senha = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
+        current_user.password = nova_senha
+        db.session.commit()
+        flash('Senha atualizada com sucesso!')
+        return redirect(url_for('dashboard'))
+    return render_template('alterar_senha.html')
 
 @app.route('/dashboard')
 @login_required
@@ -89,6 +99,7 @@ def nova_os():
 @login_required
 def cadastrar_tecnico():
     if not current_user.is_admin:
+        flash("Acesso restrito ao administrador.")
         return redirect(url_for('dashboard'))
     if request.method == 'POST':
         hashed_pw = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
@@ -96,26 +107,9 @@ def cadastrar_tecnico():
                     nome_completo=request.form.get('nome'), is_admin=False)
         db.session.add(novo)
         db.session.commit()
+        flash('Novo técnico cadastrado!')
         return redirect(url_for('dashboard'))
     return render_template('cadastrar_tecnico.html')
-
-@app.route('/gerar_pdf/<int:os_id>')
-@login_required
-def gerar_pdf(os_id):
-    os_data = OrdemServico.query.get_or_404(os_id)
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=A4)
-    p.setFont("Helvetica-Bold", 16)
-    p.drawString(100, 800, "MINIPA - RELATÓRIO TÉCNICO")
-    p.setFont("Helvetica", 12)
-    p.drawString(100, 770, f"OS: #{os_data.id} | Cliente: {os_data.cliente}")
-    p.drawString(100, 750, f"Equipamento: {os_data.equipamento} | S/N: {os_data.serie}")
-    p.drawString(100, 730, f"Garantia: {os_data.garantia} | Valor: R$ {os_data.valor}")
-    p.drawString(100, 710, f"Técnico: {os_data.tecnico}")
-    p.showPage()
-    p.save()
-    buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name=f"OS_{os_id}_Minipa.pdf")
 
 @app.route('/logout')
 def logout():
