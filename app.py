@@ -5,11 +5,11 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_2026_will_precision'
+app.config['SECRET_KEY'] = 'minipa_2026_full_report'
 
-# Caminho do Banco de Dados
 basedir = os.path.abspath(os.path.dirname(__file__))
 instance_dir = os.path.join(basedir, 'instance')
 if not os.path.exists(instance_dir): os.makedirs(instance_dir)
@@ -39,6 +39,7 @@ class OrdemServico(db.Model):
     valor = db.Column(db.String(20))
     defeito = db.Column(db.Text)
     tecnico = db.Column(db.String(100))
+    data = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 class Estoque(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -49,91 +50,87 @@ class Estoque(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- ROTAS PRINCIPAIS ---
-@app.route('/', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        user = User.query.filter_by(username=request.form.get('username').strip().lower()).first()
-        if user and check_password_hash(user.password, request.form.get('password')):
-            login_user(user)
-            return redirect(url_for('dashboard'))
-        flash('Login inválido.')
-    return render_template('login.html')
+# --- ROTAS DE PDF (PARA MATRIZ) ---
 
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    ordens = OrdemServico.query.order_by(OrdemServico.id.desc()).all()
-    itens_estoque = Estoque.query.all()
-    return render_template('dashboard.html', ordens=ordens, estoque=itens_estoque)
-
-@app.route('/nova_os', methods=['GET', 'POST'])
-@login_required
-def nova_os():
-    if request.method == 'POST':
-        nova = OrdemServico(
-            cliente=request.form.get('cliente'), equipamento=request.form.get('equipamento'),
-            serie=request.form.get('serie'), nota_fiscal=request.form.get('nota_fiscal'),
-            garantia=request.form.get('garantia'), valor=request.form.get('valor'),
-            defeito=request.form.get('defeito'), tecnico=current_user.nome_completo
-        )
-        db.session.add(nova)
-        db.session.commit()
-        return redirect(url_for('dashboard'))
-    return render_template('nova_os.html')
-
-# --- ROTAS DE ESTOQUE ---
-@app.route('/estoque/novo', methods=['POST'])
-@login_required
-def novo_item_estoque():
-    novo_item = Estoque(
-        componente=request.form.get('componente'),
-        quantidade=int(request.form.get('quantidade') or 0),
-        posicao=request.form.get('posicao')
-    )
-    db.session.add(novo_item)
-    db.session.commit()
-    return redirect(url_for('dashboard'))
-
-@app.route('/estoque/update/<int:id>', methods=['POST'])
-@login_required
-def update_estoque(id):
-    item = Estoque.query.get_or_404(id)
-    item.quantidade = request.form.get('nova_quantidade')
-    db.session.commit()
-    return redirect(url_for('dashboard'))
-
-# --- ROTA DE IMPRESSÃO PDF ---
-@app.route('/imprimir/<int:id>')
+@app.route('/imprimir_os/<int:id>')
 @login_required
 def imprimir_os(id):
     os_data = OrdemServico.query.get_or_404(id)
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
-    p.setFillColorRGB(0.05, 0.28, 0.63) # Azul Minipa
+    p.setTitle(f"OS_{os_data.id}_Minipa")
+    
+    # Cabeçalho Azul Precision
+    p.setFillColorRGB(0.05, 0.28, 0.63)
     p.rect(0, 750, 600, 100, fill=1)
-    p.setFillColorRGB(1, 1, 1)
-    p.setFont("Helvetica-Bold", 18)
-    p.drawString(50, 800, "MINIPA PRECISION - ORDEM DE SERVIÇO #" + str(os_data.id))
-    p.setFillColorRGB(0, 0, 0)
-    p.setFont("Helvetica", 12)
-    p.drawString(50, 720, f"Cliente: {os_data.cliente}")
-    p.drawString(50, 700, f"Equipamento: {os_data.equipamento}")
-    p.drawString(50, 680, f"Nº Série: {os_data.serie}")
-    p.drawString(50, 660, f"Técnico: {os_data.tecnico}")
-    p.drawString(50, 620, "Defeito:")
-    p.drawString(70, 600, f"{os_data.defeito}")
+    p.setFillColor(colors.white)
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, 800, "MINIPA PRECISION - ORDEM DE SERVIÇO")
+    
+    # Conteúdo
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, 720, f"Nº OS: {os_data.id}")
+    p.setFont("Helvetica", 11)
+    p.drawString(50, 700, f"Cliente: {os_data.cliente}")
+    p.drawString(50, 680, f"Equipamento: {os_data.equipamento}")
+    p.drawString(50, 660, f"Série: {os_data.serie}")
+    p.drawString(50, 640, f"Técnico: {os_data.tecnico}")
+    p.line(50, 630, 550, 630)
+    
+    p.setFont("Helvetica-Bold", 11)
+    p.drawString(50, 610, "Defeito/Observações:")
+    p.setFont("Helvetica", 10)
+    p.drawString(50, 590, f"{os_data.defeito}")
+    
     p.showPage()
     p.save()
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name=f"OS_{os_data.id}.pdf", mimetype='application/pdf')
 
-@app.route('/logout')
-def logout():
-    logout_user()
-    return redirect(url_for('login'))
+@app.route('/relatorio_estoque')
+@login_required
+def relatorio_estoque():
+    itens = Estoque.query.all()
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(50, 800, "RELATÓRIO DE ESTOQUE DE BANCADA - MINIPA")
+    p.line(50, 790, 550, 790)
+    
+    y = 760
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(50, y, "Componente")
+    p.drawString(300, y, "Posição")
+    p.drawString(450, y, "Qtd Atual")
+    y -= 20
+    
+    p.setFont("Helvetica", 10)
+    for item in itens:
+        p.drawString(50, y, item.componente)
+        p.drawString(300, y, item.posicao)
+        p.drawString(450, y, str(item.quantidade))
+        y -= 15
+        if y < 50: p.showPage(); y = 800
+        
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name="relatorio_estoque_minipa.pdf", mimetype='application/pdf')
 
-# --- AUTO-SETUP ---
+# --- RESTANTE DAS ROTAS (DASHBOARD, LOGIN, ETC) ---
+# ... (Manter as mesmas rotas de login, dashboard, nova_os e estoque do código anterior)
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    ordens = OrdemServico.query.order_by(OrdemServico.id.desc()).all()
+    estoque = Estoque.query.all()
+    return render_template('dashboard.html', ordens=ordens, estoque=estoque)
+
+# (Lembre de incluir as rotas novo_usuario, update_estoque e novo_item_estoque enviadas antes)
+
 with app.app_context():
     db.create_all()
     if not User.query.filter_by(username='will').first():
