@@ -7,9 +7,9 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_corp_precision_2026'
+app.config['SECRET_KEY'] = 'minipa_2026_safe'
 
-# Configuração de Caminho Absoluto para o Banco
+# Caminho absoluto para o banco de dados
 basedir = os.path.abspath(os.path.dirname(__file__))
 instance_path = os.path.join(basedir, 'instance')
 if not os.path.exists(instance_path): os.makedirs(instance_path)
@@ -21,13 +21,12 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- MODELOS (A Fonte Única de Verdade) ---
+# --- MODELOS ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
     nome_completo = db.Column(db.String(100))
-    is_admin = db.Column(db.Boolean, default=False)
 
 class OrdemServico(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -40,34 +39,25 @@ class OrdemServico(db.Model):
     defeito = db.Column(db.Text)
     tecnico = db.Column(db.String(100))
 
-class Estoque(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    item = db.Column(db.String(100), nullable=False)
-    quantidade = db.Column(db.Integer, default=0)
-
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- ROTAS ---
-@app.route('/')
-def index(): return redirect(url_for('login'))
-
-@app.route('/login', methods=['GET', 'POST'])
+# --- ROTAS CORRIGIDAS ---
+@app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        user = User.query.filter_by(username=request.form.get('username').strip().lower()).first()
+        user = User.query.filter_by(username=request.form.get('username').lower()).first()
         if user and check_password_hash(user.password, request.form.get('password')):
             login_user(user)
             return redirect(url_for('dashboard'))
-        flash('Credenciais inválidas.')
+        flash('Usuário ou senha inválidos.')
     return render_template('login.html')
 
-@app.route('/dashboard')
+@app.route('/dashboard', methods=['GET'])
 @login_required
 def dashboard():
     ordens = OrdemServico.query.order_by(OrdemServico.id.desc()).all()
-    estoque = Estoque.query.all()
-    return render_template('dashboard.html', ordens=ordens, estoque=estoque)
+    return render_template('dashboard.html', ordens=ordens)
 
 @app.route('/nova_os', methods=['GET', 'POST'])
 @login_required
