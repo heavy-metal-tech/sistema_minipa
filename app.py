@@ -1,59 +1,35 @@
-import os, io
-from flask import Flask, render_template, redirect, url_for, request, flash, send_file
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
+import os
+from flask import Flask, render_template, redirect, url_for, request, flash
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from werkzeug.security import check_password_hash
+from database import db, User, OrdemServico
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_2026_safe'
+app.config['SECRET_KEY'] = 'minipa_ultra_2026'
 
-# Caminho absoluto para o banco de dados
+# Configuração de persistência para o Render
 basedir = os.path.abspath(os.path.dirname(__file__))
-instance_path = os.path.join(basedir, 'instance')
-if not os.path.exists(instance_path): os.makedirs(instance_path)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_path, 'minipa_os.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'instance', 'minipa_os.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
+db.init_app(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
-
-# --- MODELOS ---
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(50), unique=True, nullable=False)
-    password = db.Column(db.String(200), nullable=False)
-    nome_completo = db.Column(db.String(100))
-
-class OrdemServico(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    cliente = db.Column(db.String(100))
-    equipamento = db.Column(db.String(100), nullable=False)
-    serie = db.Column(db.String(50), nullable=False)
-    nota_fiscal = db.Column(db.String(50))
-    garantia = db.Column(db.String(10))
-    valor = db.Column(db.String(20))
-    defeito = db.Column(db.Text)
-    tecnico = db.Column(db.String(100))
 
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- ROTAS CORRIGIDAS ---
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        user = User.query.filter_by(username=request.form.get('username').lower()).first()
+        user = User.query.filter_by(username=request.form.get('username').strip().lower()).first()
         if user and check_password_hash(user.password, request.form.get('password')):
             login_user(user)
             return redirect(url_for('dashboard'))
-        flash('Usuário ou senha inválidos.')
+        flash('Erro de autenticação.')
     return render_template('login.html')
 
-@app.route('/dashboard', methods=['GET'])
+@app.route('/dashboard')
 @login_required
 def dashboard():
     ordens = OrdemServico.query.order_by(OrdemServico.id.desc()).all()
@@ -78,10 +54,7 @@ def nova_os():
         return redirect(url_for('dashboard'))
     return render_template('nova_os.html')
 
-@app.route('/logout')
-def logout():
-    logout_user()
-    return redirect(url_for('login'))
-
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
