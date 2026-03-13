@@ -7,20 +7,21 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_2026_final'
+app.config['SECRET_KEY'] = 'minipa_corp_precision_2026'
 
-# Configuração robusta do banco de dados
+# Configuração de Caminho Absoluto para o Banco
 basedir = os.path.abspath(os.path.dirname(__file__))
-db_folder = os.path.join(basedir, 'instance')
-if not os.path.exists(db_folder): os.makedirs(db_folder)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(db_folder, 'minipa_os.db')
+instance_path = os.path.join(basedir, 'instance')
+if not os.path.exists(instance_path): os.makedirs(instance_path)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_path, 'minipa_os.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- MODELOS (A base de tudo) ---
+# --- MODELOS (A Fonte Única de Verdade) ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -39,10 +40,15 @@ class OrdemServico(db.Model):
     defeito = db.Column(db.Text)
     tecnico = db.Column(db.String(100))
 
-# --- ROTAS ---
+class Estoque(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    item = db.Column(db.String(100), nullable=False)
+    quantidade = db.Column(db.Integer, default=0)
+
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
+# --- ROTAS ---
 @app.route('/')
 def index(): return redirect(url_for('login'))
 
@@ -53,14 +59,15 @@ def login():
         if user and check_password_hash(user.password, request.form.get('password')):
             login_user(user)
             return redirect(url_for('dashboard'))
-        flash('Falha no login.')
+        flash('Credenciais inválidas.')
     return render_template('login.html')
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    os_list = OrdemServico.query.order_by(OrdemServico.id.desc()).all()
-    return render_template('dashboard.html', ordens=os_list)
+    ordens = OrdemServico.query.order_by(OrdemServico.id.desc()).all()
+    estoque = Estoque.query.all()
+    return render_template('dashboard.html', ordens=ordens, estoque=estoque)
 
 @app.route('/nova_os', methods=['GET', 'POST'])
 @login_required
@@ -80,6 +87,11 @@ def nova_os():
         db.session.commit()
         return redirect(url_for('dashboard'))
     return render_template('nova_os.html')
+
+@app.route('/logout')
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
 
 if __name__ == '__main__':
     app.run(debug=True)
