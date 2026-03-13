@@ -8,13 +8,13 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_2026_full_report'
+app.config['SECRET_KEY'] = 'minipa_top_secret_2026'
 
+# Configuração do Banco de Dados
 basedir = os.path.abspath(os.path.dirname(__file__))
 instance_dir = os.path.join(basedir, 'instance')
 if not os.path.exists(instance_dir): os.makedirs(instance_dir)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_dir, 'minipa_os.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_dir, 'minipa_v3.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -34,12 +34,9 @@ class OrdemServico(db.Model):
     cliente = db.Column(db.String(100))
     equipamento = db.Column(db.String(100), nullable=False)
     serie = db.Column(db.String(50), nullable=False)
-    nota_fiscal = db.Column(db.String(50))
-    garantia = db.Column(db.String(10))
     valor = db.Column(db.String(20))
     defeito = db.Column(db.Text)
     tecnico = db.Column(db.String(100))
-    data = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 class Estoque(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -50,86 +47,103 @@ class Estoque(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- ROTAS DE PDF (PARA MATRIZ) ---
+# --- ROTAS DE PDF (O CORAÇÃO DO SISTEMA) ---
 
-@app.route('/imprimir_os/<int:id>')
+@app.route('/relatorio/estoque')
 @login_required
-def imprimir_os(id):
+def pdf_estoque():
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(100, 800, "RELATÓRIO DE INVENTÁRIO - MINIPA PRECISION")
+    p.setFont("Helvetica", 12)
+    y = 750
+    itens = Estoque.query.all()
+    for item in itens:
+        p.drawString(100, y, f"Item: {item.componente} | Qtd: {item.quantidade} | Local: {item.posicao}")
+        y -= 20
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name="estoque_minipa.pdf")
+
+@app.route('/relatorio/os/<int:id>')
+@login_required
+def pdf_os(id):
     os_data = OrdemServico.query.get_or_404(id)
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
-    p.setTitle(f"OS_{os_data.id}_Minipa")
-    
-    # Cabeçalho Azul Precision
     p.setFillColorRGB(0.05, 0.28, 0.63)
     p.rect(0, 750, 600, 100, fill=1)
     p.setFillColor(colors.white)
-    p.setFont("Helvetica-Bold", 16)
-    p.drawString(50, 800, "MINIPA PRECISION - ORDEM DE SERVIÇO")
-    
-    # Conteúdo
+    p.setFont("Helvetica-Bold", 20)
+    p.drawString(50, 790, f"ORDEM DE SERVIÇO #{os_data.id}")
     p.setFillColor(colors.black)
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(50, 720, f"Nº OS: {os_data.id}")
-    p.setFont("Helvetica", 11)
+    p.setFont("Helvetica", 12)
     p.drawString(50, 700, f"Cliente: {os_data.cliente}")
     p.drawString(50, 680, f"Equipamento: {os_data.equipamento}")
     p.drawString(50, 660, f"Série: {os_data.serie}")
     p.drawString(50, 640, f"Técnico: {os_data.tecnico}")
-    p.line(50, 630, 550, 630)
-    
-    p.setFont("Helvetica-Bold", 11)
-    p.drawString(50, 610, "Defeito/Observações:")
-    p.setFont("Helvetica", 10)
-    p.drawString(50, 590, f"{os_data.defeito}")
-    
+    p.drawString(50, 600, "Defeito Relatado:")
+    p.drawString(50, 580, f"{os_data.defeito}")
     p.showPage()
     p.save()
     buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name=f"OS_{os_data.id}.pdf", mimetype='application/pdf')
+    return send_file(buffer, as_attachment=True, download_name=f"OS_{os_data.id}.pdf")
 
-@app.route('/relatorio_estoque')
-@login_required
-def relatorio_estoque():
-    itens = Estoque.query.all()
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=A4)
-    
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, 800, "RELATÓRIO DE ESTOQUE DE BANCADA - MINIPA")
-    p.line(50, 790, 550, 790)
-    
-    y = 760
-    p.setFont("Helvetica-Bold", 10)
-    p.drawString(50, y, "Componente")
-    p.drawString(300, y, "Posição")
-    p.drawString(450, y, "Qtd Atual")
-    y -= 20
-    
-    p.setFont("Helvetica", 10)
-    for item in itens:
-        p.drawString(50, y, item.componente)
-        p.drawString(300, y, item.posicao)
-        p.drawString(450, y, str(item.quantidade))
-        y -= 15
-        if y < 50: p.showPage(); y = 800
-        
-    p.showPage()
-    p.save()
-    buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name="relatorio_estoque_minipa.pdf", mimetype='application/pdf')
+# --- ROTAS DE NAVEGAÇÃO ---
 
-# --- RESTANTE DAS ROTAS (DASHBOARD, LOGIN, ETC) ---
-# ... (Manter as mesmas rotas de login, dashboard, nova_os e estoque do código anterior)
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user = User.query.filter_by(username=request.form.get('username').lower()).first()
+        if user and check_password_hash(user.password, request.form.get('password')):
+            login_user(user)
+            return redirect(url_for('dashboard'))
+    return render_template('login.html')
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    ordens = OrdemServico.query.order_by(OrdemServico.id.desc()).all()
-    estoque = Estoque.query.all()
-    return render_template('dashboard.html', ordens=ordens, estoque=estoque)
+    ordens = OrdemServico.query.all()
+    itens_estoque = Estoque.query.all()
+    return render_template('dashboard.html', ordens=ordens, estoque=itens_estoque)
 
-# (Lembre de incluir as rotas novo_usuario, update_estoque e novo_item_estoque enviadas antes)
+@app.route('/nova_os', methods=['GET', 'POST'])
+@login_required
+def nova_os():
+    if request.method == 'POST':
+        nova = OrdemServico(
+            cliente=request.form.get('cliente'), equipamento=request.form.get('equipamento'),
+            serie=request.form.get('serie'), valor=request.form.get('valor'),
+            defeito=request.form.get('defeito'), tecnico=current_user.nome_completo
+        )
+        db.session.add(nova)
+        db.session.commit()
+        return redirect(url_for('dashboard'))
+    return render_template('nova_os.html')
+
+@app.route('/estoque/add', methods=['POST'])
+@login_required
+def add_estoque():
+    novo = Estoque(componente=request.form.get('componente'), quantidade=int(request.form.get('quantidade')), posicao=request.form.get('posicao'))
+    db.session.add(novo)
+    db.session.commit()
+    return redirect(url_for('dashboard'))
+
+@app.route('/usuarios/novo', methods=['POST'])
+@login_required
+def novo_tecnico():
+    if current_user.is_admin:
+        u = User(username=request.form.get('username'), password=generate_password_hash(request.form.get('password')), nome_completo=request.form.get('nome'), is_admin=False)
+        db.session.add(u)
+        db.session.commit()
+    return redirect(url_for('dashboard'))
+
+@app.route('/logout')
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
 
 with app.app_context():
     db.create_all()
