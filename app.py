@@ -8,57 +8,116 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_assistencia_2026'
+app.config['SECRET_KEY'] = 'minipa_2026_premium'
 
-# Configuração do Banco
+# Configuração do Banco de Dados (v2 para atualizar campos)
 basedir = os.path.abspath(os.path.dirname(__file__))
 instance_dir = os.path.join(basedir, 'instance')
 if not os.path.exists(instance_dir): os.makedirs(instance_dir)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_dir, 'assistencia_v1.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_dir, 'minipa_v2.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- MODELO COMPLETO (CONFORME ESCOPO DO CHEFE) ---
+# --- MODELOS ---
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+    nome_completo = db.Column(db.String(100))
+    is_admin = db.Column(db.Boolean, default=False)
+
 class OrdemServico(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     data_abertura = db.Column(db.DateTime, default=db.func.current_timestamp())
-    status = db.Column(db.String(30), default='Aberta') # Aberta, Em análise, Aguardando peça, Concluída
-    
-    # Cliente
+    status = db.Column(db.String(30), default='Aberta')
     cliente_nome = db.Column(db.String(100), nullable=False)
     cliente_cpf_cnpj = db.Column(db.String(20))
-    cliente_tel = db.Column(db.String(20))
-    cliente_email = db.Column(db.String(100))
-    
-    # Equipamento
     modelo = db.Column(db.String(100), nullable=False)
     serie = db.Column(db.String(50), nullable=False)
     nf_garantia = db.Column(db.String(50))
-    em_garantia = db.Column(db.String(5)) # Sim / Não
-    
-    # Técnico e Financeiro
+    em_garantia = db.Column(db.String(5))
     defeito = db.Column(db.Text)
-    pecas_solicitadas = db.Column(db.Text) # Códigos e descrições
     valor_servico = db.Column(db.String(20))
     tecnico_resp = db.Column(db.String(100))
 
-# ... (Manter User, login_manager e outras rotas)
+@login_manager.user_loader
+def load_user(user_id): return User.query.get(int(user_id))
+
+# --- ROTAS PRINCIPAIS ---
+
+@app.route('/')
+def index():
+    # Se não logou, vai pra login. Se logou, vai pro dashboard.
+    if not current_user.is_authenticated:
+        return redirect(url_for('login'))
+    return redirect(url_for('dashboard'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user = User.query.filter_by(username=request.form.get('username').lower()).first()
+        if user and check_password_hash(user.password, request.form.get('password')):
+            login_user(user)
+            return redirect(url_for('dashboard'))
+        flash('Usuário ou senha inválidos')
+    return render_template('login.html')
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
     ordens = OrdemServico.query.order_by(OrdemServico.id.desc()).all()
-    # Métricas para os gráficos (Contagem por status)
-    status_counts = {
-        'abertas': OrdemServico.query.filter_by(status='Aberta').count(),
-        'analise': OrdemServico.query.filter_by(status='Em análise').count(),
-        'concluidas': OrdemServico.query.filter_by(status='Concluída').count()
-    }
-    return render_template('dashboard.html', ordens=ordens, stats=status_counts)
+    return render_template('dashboard.html', ordens=ordens)
 
-# Iniciar Banco
+@app.route('/nova_os', methods=['GET', 'POST'])
+@login_required
+def nova_os():
+    if request.method == 'POST':
+        nova = OrdemServico(
+            cliente_nome=request.form.get('cliente'),
+            cliente_cpf_cnpj=request.form.get('cpf_cnpj'),
+            modelo=request.form.get('modelo'),
+            serie=request.form.get('serie'),
+            nf_garantia=request.form.get('nf'),
+            em_garantia=request.form.get('garantia'),
+            defeito=request.form.get('defeito'),
+            valor_servico=request.form.get('valor'),
+            tecnico_resp=current_user.nome_completo
+        )
+        db.session.add(nova)
+        db.session.commit()
+        return redirect(url_for('dashboard'))
+    return render_template('nova_os.html')
+
+@app.route('/relatorio_os/<int:id>')
+@login_required
+def relatorio_os(id):
+    os_data = OrdemServico.query.get_or_404(id)
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(100, 800, f"ORDEM DE SERVIÇO #{os_data.id}")
+    p.setFont("Helvetica", 12)
+    p.drawString(100, 780, f"Cliente: {os_data.cliente_nome}")
+    p.drawString(100, 760, f"Equipamento: {os_data.modelo}")
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name=f"OS_{os_data.id}.pdf")
+
+@app.route('/logout')
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+# --- INICIALIZAÇÃO ---
 with app.app_context():
     db.create_all()
+    if not User.query.filter_by(username='will').first():
+        db.session.add(User(username='will', password=generate_password_hash('123'), nome_completo='Will Admin', is_admin=True))
+        db.session.commit()
+
+if __name__ == '__main__':
+    app.run(debug=True)
