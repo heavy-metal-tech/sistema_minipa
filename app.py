@@ -7,20 +7,19 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_2026_tech'
+app.config['SECRET_KEY'] = 'quantum_minipa_2026'
 
+# Localização do Banco - Garantindo persistência no Render
 basedir = os.path.abspath(os.path.dirname(__file__))
-instance_path = os.path.join(basedir, 'instance')
-if not os.path.exists(instance_path): os.makedirs(instance_path)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_path, 'minipa_os.db')
+db_path = os.path.join(basedir, 'instance', 'minipa_os.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- MODELOS ---
+# --- ENTIDADES (Database) ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -47,34 +46,24 @@ class Estoque(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- ROTAS ---
+# --- PROCESSAMENTO DE ROTAS ---
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        user = User.query.filter_by(username=request.form.get('username')).first()
+        user = User.query.filter_by(username=request.form.get('username').strip().lower()).first()
         if user and check_password_hash(user.password, request.form.get('password')):
             login_user(user)
             return redirect(url_for('dashboard'))
-        flash('Usuário ou senha inválidos.')
+        flash('Acesso negado: Credenciais quânticas incorretas.')
     return render_template('login.html')
-
-@app.route('/alterar_senha', methods=['GET', 'POST'])
-@login_required
-def alterar_senha():
-    if request.method == 'POST':
-        nova_senha = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
-        current_user.password = nova_senha
-        db.session.commit()
-        flash('Senha atualizada com sucesso!')
-        return redirect(url_for('dashboard'))
-    return render_template('alterar_senha.html')
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    ordens = OrdemServico.query.order_by(OrdemServico.id.desc()).all()
-    pecas = Estoque.query.all()
-    return render_template('dashboard.html', ordens=ordens, pecas=pecas)
+    # Carregamento explícito de dados
+    os_list = OrdemServico.query.order_by(OrdemServico.id.desc()).all()
+    stock_list = Estoque.query.all()
+    return render_template('dashboard.html', ordens=os_list, estoque=stock_list)
 
 @app.route('/nova_os', methods=['GET', 'POST'])
 @login_required
@@ -95,26 +84,26 @@ def nova_os():
         return redirect(url_for('dashboard'))
     return render_template('nova_os.html')
 
-@app.route('/cadastrar_tecnico', methods=['GET', 'POST'])
+@app.route('/gerar_pdf/<int:os_id>')
 @login_required
-def cadastrar_tecnico():
-    if not current_user.is_admin:
-        flash("Acesso restrito ao administrador.")
-        return redirect(url_for('dashboard'))
-    if request.method == 'POST':
-        hashed_pw = generate_password_hash(request.form.get('password'), method='pbkdf2:sha256')
-        novo = User(username=request.form.get('username'), password=hashed_pw, 
-                    nome_completo=request.form.get('nome'), is_admin=False)
-        db.session.add(novo)
-        db.session.commit()
-        flash('Novo técnico cadastrado!')
-        return redirect(url_for('dashboard'))
-    return render_template('cadastrar_tecnico.html')
+def gerar_pdf(os_id):
+    os_data = OrdemServico.query.get_or_404(os_id)
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(100, 800, "MINIPA - RELATÓRIO TÉCNICO DE BANCADA")
+    p.setFont("Helvetica", 12)
+    p.drawString(100, 770, f"OS: #{os_data.id} | Cliente: {os_data.cliente}")
+    p.drawString(100, 750, f"Modelo: {os_data.equipamento} | S/N: {os_data.serie}")
+    p.drawString(100, 730, f"Técnico: {os_data.tecnico}")
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name=f"OS_{os_id}_Minipa.pdf")
 
 @app.route('/logout')
 def logout():
-    logout_user()
-    return redirect(url_for('login'))
+    logout_user(); return redirect(url_for('login'))
 
 if __name__ == '__main__':
     app.run(debug=True)
