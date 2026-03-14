@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minipa Precision | Command Center</title>
+    <title>Minipa Precision | Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -11,9 +11,10 @@
         :root { --minipa-blue: #0d47a1; --dark-bg: #061a33; }
         body { background-color: #f0f2f5; font-family: 'Inter', sans-serif; }
         .navbar { background: white; border-bottom: 4px solid var(--minipa-blue); box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .card-stats { background: linear-gradient(135deg, var(--dark-bg), var(--minipa-blue)); color: white; border-radius: 15px; padding: 20px; }
-        .card-white { background: white; border-radius: 15px; box-shadow: 0 8px 25px rgba(0,0,0,0.05); padding: 20px; }
-        .btn-new { background: #d32f2f; color: white; border-radius: 50px; font-weight: 800; padding: 10px 25px; text-decoration: none; display: inline-block; }
+        .card-stats { background: linear-gradient(135deg, var(--dark-bg), var(--minipa-blue)); color: white; border-radius: 15px; padding: 25px; }
+        .card-white { background: white; border: none; border-radius: 15px; box-shadow: 0 8px 25px rgba(0,0,0,0.05); padding: 20px; }
+        .btn-new { background: #d32f2f; color: white; border-radius: 50px; font-weight: 800; padding: 12px 30px; text-decoration: none; display: inline-block; transition: 0.3s; }
+        .btn-new:hover { background: #b71c1c; transform: scale(1.05); color: white; }
     </style>
 </head>
 <body>
@@ -22,76 +23,85 @@
     <div class="container d-flex justify-content-between align-items-center">
         <strong style="color: var(--minipa-blue); font-size: 1.5rem;">SISTEMA MINIPA</strong>
         <div class="d-flex align-items-center gap-3">
-            <span class="badge bg-primary rounded-pill px-3">{{ current_user.nome_completo }}</span>
-            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm"><i class="fas fa-power-off"></i></a>
+            <span class="badge bg-primary rounded-pill px-3 py-2">{{ current_user.nome_completo }}</span>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm rounded-circle"><i class="fas fa-power-off"></i></a>
         </div>
     </div>
 </nav>
 
-<div class="container">
-    <div class="row g-4 mb-4">
-        <div class="col-md-4">
-            <div class="card-stats">
-                <small>Total de OS</small>
-                <h2 class="display-4 fw-bold">{{ ordens|length }}</h2>
+<div class="container pb-5">
+    <div class="row g-4 mb-5">
+        <div class="col-md-3">
+            <div class="card-stats h-100 d-flex flex-column justify-content-center">
+                <small class="opacity-75">Ordens Ativas</small>
+                <h1 class="display-4 fw-bold mb-0">{{ ordens|length }}</h1>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="card-white text-center">
-                <h6>Ações Rápidas</h6>
-                <a href="#" class="btn btn-new w-100">NOVA OS</a>
+        <div class="col-md-5">
+            <div class="card-white h-100">
+                <h6 class="fw-bold mb-3"><i class="fas fa-chart-line text-primary me-2"></i>Volume de Trabalho</h6>
+                <canvas id="mainChart" style="max-height: 180px;"></canvas>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="card-white">
-                <canvas id="miniChart" style="max-height: 100px;"></canvas>
+        <div class="col-md-4 text-center">
+            <div class="card-white h-100 d-flex flex-column justify-content-center">
+                <a href="#" class="btn btn-new mb-3"><i class="fas fa-plus-circle me-2"></i>NOVA OS</a>
+                <div class="alert alert-info py-2 small mb-0">Estoque: {{ estoque|length }} itens</div>
             </div>
         </div>
     </div>
 
     <div class="card-white p-0 overflow-hidden">
-        <table class="table table-hover mb-0">
-            <thead class="table-dark">
-                <tr>
-                    <th class="ps-4">OS</th>
-                    <th>Cliente</th>
-                    <th>Equipamento</th>
-                    <th>Valor</th>
-                    <th class="text-center">Excluir</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for os in ordens %}
-                <tr>
-                    <td class="ps-4">#{{ os.id }}</td>
-                    <td>{{ os.cliente }}</td>
-                    <td>{{ os.equipamento }}</td>
-                    <td>R$ {{ os.valor }}</td>
-                    <td class="text-center">
-                        <a href="{{ url_for('deletar_os', id=os.id) }}" class="text-danger" onclick="return confirm('Apagar OS?')">
-                            <i class="fas fa-trash"></i>
-                        </a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="p-3 bg-light border-bottom fw-bold text-dark"><i class="fas fa-list me-2"></i>Fila de Equipamentos</div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="bg-dark text-white">
+                    <tr>
+                        <th class="ps-4">OS</th>
+                        <th>Cliente</th>
+                        <th>Equipamento</th>
+                        <th>Valor</th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for os in ordens %}
+                    <tr>
+                        <td class="ps-4 fw-bold text-primary">#{{ os.id }}</td>
+                        <td>{{ os.cliente }}</td>
+                        <td><span class="badge bg-light text-primary border border-primary-subtle">{{ os.equipamento }}</span></td>
+                        <td class="fw-bold">R$ {{ os.valor }}</td>
+                        <td class="text-center">
+                            <a href="{{ url_for('deletar_os', id=os.id) }}" class="btn btn-sm btn-link text-danger" onclick="return confirm('Excluir esta OS permanentemente?')">
+                                <i class="fas fa-trash-alt"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
 <script>
-    new Chart(document.getElementById('miniChart'), {
-        type: 'line',
+    const ctx = document.getElementById('mainChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
         data: {
-            labels: ['Total'],
+            labels: ['Total de OS'],
             datasets: [{
-                label: 'OS',
+                label: 'Atendimentos',
                 data: [{{ ordens|length }}],
-                borderColor: '#0d47a1',
-                tension: 0.4
+                backgroundColor: '#0d47a1',
+                borderRadius: 8
             }]
         },
-        options: { plugins: { legend: { display: false } } }
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
     });
 </script>
 </body>
