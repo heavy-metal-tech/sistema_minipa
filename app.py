@@ -5,18 +5,17 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_2026_seguro'
+app.config['SECRET_KEY'] = 'minipa_2026_estavel'
 
 basedir = os.path.abspath(os.path.dirname(__file__))
-# Usando v7 para garantir que o banco seja criado com as colunas certas do zero
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'minipa_v7.db')
+# Usando v8 para garantir que o banco crie as colunas 'cliente' e 'equipamento' corretamente
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'minipa_v8.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- MODELOS ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -35,25 +34,17 @@ class OrdemServico(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- ROTAS ---
 @app.route('/')
 def index():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        # Pega os dados do formulário
         user = User.query.filter_by(username=request.form.get('username')).first()
-        password = request.form.get('password')
-        
-        if user and check_password_hash(user.password, password):
+        if user and check_password_hash(user.password, request.form.get('password')):
             login_user(user)
             return redirect(url_for('dashboard'))
-        
-        flash('Usuário ou senha inválidos!')
     return render_template('login.html')
 
 @app.route('/dashboard')
@@ -62,20 +53,38 @@ def dashboard():
     ordens = OrdemServico.query.all()
     return render_template('dashboard.html', ordens=ordens, estoque=[])
 
+@app.route('/nova_os', methods=['GET', 'POST'])
+@login_required
+def nova_os():
+    if request.method == 'POST':
+        nova = OrdemServico(
+            cliente=request.form.get('cliente'),
+            equipamento=request.form.get('equipamento'),
+            serie=request.form.get('serie'),
+            valor=request.form.get('valor')
+        )
+        db.session.add(nova)
+        db.session.commit()
+        return redirect(url_for('dashboard'))
+    return render_template('nova_os.html')
+
+@app.route('/deletar/<int:id>')
+@login_required
+def deletar_os(id):
+    os_para_deletar = OrdemServico.query.get_or_404(id)
+    db.session.delete(os_para_deletar)
+    db.session.commit()
+    return redirect(url_for('dashboard'))
+
 @app.route('/logout')
 def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- CRIAÇÃO DO USUÁRIO ---
 with app.app_context():
     db.create_all()
     if not User.query.filter_by(username='will').first():
-        db.session.add(User(
-            username='will', 
-            password=generate_password_hash('123'),
-            nome_completo="Willian Técnico"
-        ))
+        db.session.add(User(username='will', password=generate_password_hash('123'), nome_completo="Willian Técnico"))
         db.session.commit()
 
 if __name__ == '__main__':
