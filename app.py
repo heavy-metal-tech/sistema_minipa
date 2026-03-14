@@ -1,155 +1,204 @@
-import os, io
-from flask import Flask, render_template, redirect, url_for, request, flash, send_file
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minipa Precision | Registro de Entrada</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --minipa-blue: #0d47a1;
+            --minipa-red: #d32f2f;
+            --dark-blue: #061a33;
+        }
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_top_secret_2026'
+        body { 
+            background-color: #f0f2f5; 
+            font-family: 'Inter', sans-serif;
+            color: #2c3e50;
+        }
 
-# Configuração do Banco de Dados
-basedir = os.path.abspath(os.path.dirname(__file__))
-instance_dir = os.path.join(basedir, 'instance')
-if not os.path.exists(instance_dir): os.makedirs(instance_dir)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_dir, 'minipa_v3.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+        /* Navbar Sincronizada */
+        .navbar { 
+            background: white; 
+            border-bottom: 4px solid var(--minipa-blue);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .navbar-brand img { height: 50px; }
 
-db = SQLAlchemy(app)
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
+        /* Card de Registro */
+        .card-os {
+            background: white;
+            border: none;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
 
-# --- MODELOS ---
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(50), unique=True, nullable=False)
-    password = db.Column(db.String(200), nullable=False)
-    nome_completo = db.Column(db.String(100))
-    is_admin = db.Column(db.Boolean, default=False)
+        .os-header {
+            background: linear-gradient(135deg, var(--dark-blue), var(--minipa-blue));
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
 
-class OrdemServico(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    cliente = db.Column(db.String(100))
-    equipamento = db.Column(db.String(100), nullable=False)
-    serie = db.Column(db.String(50), nullable=False)
-    valor = db.Column(db.String(20))
-    defeito = db.Column(db.Text)
-    tecnico = db.Column(db.String(100))
+        .form-label {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--dark-blue);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
 
-class Estoque(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    componente = db.Column(db.String(100), nullable=False)
-    quantidade = db.Column(db.Integer, default=0)
-    posicao = db.Column(db.String(50))
+        .form-control {
+            border-radius: 10px;
+            padding: 12px;
+            border: 2px solid #eef2f7;
+            background: #f8f9fa;
+            transition: 0.3s;
+        }
 
-@login_manager.user_loader
-def load_user(user_id): return User.query.get(int(user_id))
+        .form-control:focus {
+            border-color: var(--minipa-blue);
+            background: white;
+            box-shadow: 0 0 0 4px rgba(13, 71, 161, 0.1);
+        }
 
-# --- ROTAS DE PDF (O CORAÇÃO DO SISTEMA) ---
+        /* Tique de Garantia Customizado */
+        .garantia-selector {
+            display: flex;
+            gap: 15px;
+        }
 
-@app.route('/relatorio/estoque')
-@login_required
-def pdf_estoque():
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=A4)
-    p.setFont("Helvetica-Bold", 16)
-    p.drawString(100, 800, "RELATÓRIO DE INVENTÁRIO - MINIPA PRECISION")
-    p.setFont("Helvetica", 12)
-    y = 750
-    itens = Estoque.query.all()
-    for item in itens:
-        p.drawString(100, y, f"Item: {item.componente} | Qtd: {item.quantidade} | Local: {item.posicao}")
-        y -= 20
-    p.showPage()
-    p.save()
-    buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name="estoque_minipa.pdf")
+        .garantia-option {
+            flex: 1;
+            position: relative;
+        }
 
-@app.route('/relatorio/os/<int:id>')
-@login_required
-def pdf_os(id):
-    os_data = OrdemServico.query.get_or_404(id)
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=A4)
-    p.setFillColorRGB(0.05, 0.28, 0.63)
-    p.rect(0, 750, 600, 100, fill=1)
-    p.setFillColor(colors.white)
-    p.setFont("Helvetica-Bold", 20)
-    p.drawString(50, 790, f"ORDEM DE SERVIÇO #{os_data.id}")
-    p.setFillColor(colors.black)
-    p.setFont("Helvetica", 12)
-    p.drawString(50, 700, f"Cliente: {os_data.cliente}")
-    p.drawString(50, 680, f"Equipamento: {os_data.equipamento}")
-    p.drawString(50, 660, f"Série: {os_data.serie}")
-    p.drawString(50, 640, f"Técnico: {os_data.tecnico}")
-    p.drawString(50, 600, "Defeito Relatado:")
-    p.drawString(50, 580, f"{os_data.defeito}")
-    p.showPage()
-    p.save()
-    buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name=f"OS_{os_data.id}.pdf")
+        .garantia-option input {
+            position: absolute;
+            opacity: 0;
+            cursor: pointer;
+        }
 
-# --- ROTAS DE NAVEGAÇÃO ---
+        .garantia-btn {
+            display: block;
+            text-align: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border: 2px solid #eef2f7;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+        }
 
-@app.route('/', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        user = User.query.filter_by(username=request.form.get('username').lower()).first()
-        if user and check_password_hash(user.password, request.form.get('password')):
-            login_user(user)
-            return redirect(url_for('dashboard'))
-    return render_template('login.html')
+        .garantia-option input:checked + .garantia-btn {
+            background: var(--minipa-blue);
+            color: white;
+            border-color: var(--minipa-blue);
+        }
 
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    ordens = OrdemServico.query.all()
-    itens_estoque = Estoque.query.all()
-    return render_template('dashboard.html', ordens=ordens, estoque=itens_estoque)
+        .btn-finalizar {
+            background: var(--minipa-red);
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 12px;
+            font-weight: 800;
+            width: 100%;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
 
-@app.route('/nova_os', methods=['GET', 'POST'])
-@login_required
-def nova_os():
-    if request.method == 'POST':
-        nova = OrdemServico(
-            cliente=request.form.get('cliente'), equipamento=request.form.get('equipamento'),
-            serie=request.form.get('serie'), valor=request.form.get('valor'),
-            defeito=request.form.get('defeito'), tecnico=current_user.nome_completo
-        )
-        db.session.add(nova)
-        db.session.commit()
-        return redirect(url_for('dashboard'))
-    return render_template('nova_os.html')
+        .btn-finalizar:hover {
+            background: #b71c1c;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(211, 47, 47, 0.3);
+        }
+    </style>
+</head>
+<body>
 
-@app.route('/estoque/add', methods=['POST'])
-@login_required
-def add_estoque():
-    novo = Estoque(componente=request.form.get('componente'), quantidade=int(request.form.get('quantidade')), posicao=request.form.get('posicao'))
-    db.session.add(novo)
-    db.session.commit()
-    return redirect(url_for('dashboard'))
+<nav class="navbar mb-5">
+    <div class="container d-flex justify-content-center">
+        <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+            <img src="{{ url_for('static', filename='logo.png') }}">
+        </a>
+    </div>
+</nav>
 
-@app.route('/usuarios/novo', methods=['POST'])
-@login_required
-def novo_tecnico():
-    if current_user.is_admin:
-        u = User(username=request.form.get('username'), password=generate_password_hash(request.form.get('password')), nome_completo=request.form.get('nome'), is_admin=False)
-        db.session.add(u)
-        db.session.commit()
-    return redirect(url_for('dashboard'))
+<div class="container pb-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card-os">
+                <div class="os-header">
+                    <h4 class="mb-0 fw-bold"><i class="fas fa-file-signature me-2"></i>Nova Ordem de Serviço</h4>
+                    <small class="opacity-75">Unidade de Manutenção e Calibração</small>
+                </div>
+                
+                <div class="card-body p-4 p-md-5">
+                    <form action="{{ url_for('nova_os') }}" method="POST">
+                        <div class="mb-4">
+                            <label class="form-label">Cliente / Razão Social</label>
+                            <input type="text" name="cliente" class="form-control shadow-sm" placeholder="Nome completo do cliente" required>
+                        </div>
 
-@app.route('/logout')
-def logout():
-    logout_user()
-    return redirect(url_for('login'))
+                        <div class="row">
+                            <div class="col-md-7 mb-4">
+                                <label class="form-label">Equipamento</label>
+                                <input type="text" name="equipamento" class="form-control shadow-sm" placeholder="Ex: Multímetro ET-2042E" required>
+                            </div>
+                            <div class="col-md-5 mb-4">
+                                <label class="form-label">Número de Série</label>
+                                <input type="text" name="serie" class="form-control shadow-sm" placeholder="S/N" required>
+                            </div>
+                        </div>
 
-with app.app_context():
-    db.create_all()
-    if not User.query.filter_by(username='will').first():
-        db.session.add(User(username='will', password=generate_password_hash('123'), nome_completo='Will Admin', is_admin=True))
-        db.session.commit()
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <label class="form-label">Status da Garantia</label>
+                                <div class="garantia-selector">
+                                    <label class="garantia-option">
+                                        <input type="radio" name="garantia" value="Não" checked>
+                                        <span class="garantia-btn"><i class="fas fa-times-circle me-1"></i> Fora</span>
+                                    </label>
+                                    <label class="garantia-option">
+                                        <input type="radio" name="garantia" value="Sim">
+                                        <span class="garantia-btn"><i class="fas fa-check-circle me-1"></i> Em Garantia</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <label class="form-label">Valor Estimado (R$)</label>
+                                <input type="text" name="valor" class="form-control shadow-sm" placeholder="0,00">
+                            </div>
+                        </div>
 
-if __name__ == '__main__':
-    app.run(debug=True)
+                        <div class="mb-5">
+                            <label class="form-label">Descrição do Defeito</label>
+                            <textarea name="defeito" class="form-control shadow-sm" rows="4" placeholder="Descreva os problemas relatados..."></textarea>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <a href="{{ url_for('dashboard') }}" class="btn btn-light w-100 py-3 fw-bold text-muted rounded-pill">CANCELAR</a>
+                            </div>
+                            <div class="col-md-8">
+                                <button type="submit" class="btn btn-finalizar shadow">GERAR ORDEM DE SERVIÇO</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="text-center mt-4">
+                <p class="small text-muted">Registro realizado pelo técnico: <strong>{{ current_user.nome_completo }}</strong></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
