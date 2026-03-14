@@ -5,11 +5,11 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_2026_estavel'
+app.config['SECRET_KEY'] = 'minipa_2026_seguro'
 
 basedir = os.path.abspath(os.path.dirname(__file__))
-# Usando v5 para garantir que as tabelas de estoque e usuários reflitam o dashboard novo
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'minipa_v5.db')
+# Mudamos o nome do banco para "final" para resetar qualquer erro de coluna
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'minipa_final.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -25,10 +25,10 @@ class User(UserMixin, db.Model):
 
 class OrdemServico(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    cliente = db.Column(db.String(100), nullable=False) # Ajustado para bater com o HTML
-    equipamento = db.Column(db.String(100), nullable=False) # Ajustado para bater com o HTML
+    cliente = db.Column(db.String(100), nullable=False)
+    equipamento = db.Column(db.String(100), nullable=False)
     serie = db.Column(db.String(50), nullable=False)
-    valor = db.Column(db.String(20), default="0,00") # Ajustado para bater com o HTML
+    valor = db.Column(db.String(20), default="0,00")
     status = db.Column(db.String(30), default='Aberta')
 
 class Estoque(db.Model):
@@ -53,7 +53,6 @@ def login():
         if user and check_password_hash(user.password, request.form.get('password')):
             login_user(user)
             return redirect(url_for('dashboard'))
-        flash('Login inválido')
     return render_template('login.html')
 
 @app.route('/dashboard')
@@ -76,7 +75,7 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- BANCO DE DADOS ---
+# --- INICIALIZAÇÃO ---
 with app.app_context():
     db.create_all()
     if not User.query.filter_by(username='will').first():
