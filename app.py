@@ -408,12 +408,18 @@ def tabela_precos():
 @app.route('/usuarios/novo', methods=['POST'])
 @login_required
 def novo_tecnico():
-    if current_user.is_admin:
-        u = User(username=request.form.get('username'),
-                 password=generate_password_hash(request.form.get('password')),
-                 nome_completo=request.form.get('nome'), is_admin=False)
+    if current_user.is_admin or current_user.is_gerente:
+        cargo = request.form.get('cargo', 'tecnico')
+        u = User(
+            username=request.form.get('username'),
+            password=generate_password_hash(request.form.get('password')),
+            nome_completo=request.form.get('nome'),
+            is_admin=(cargo == 'admin') and current_user.is_admin,
+            is_gerente=(cargo == 'gerente')
+        )
         db.session.add(u)
         db.session.commit()
+        flash(f'Usuário {u.nome_completo} cadastrado com sucesso!', 'success')
     return redirect(url_for('dashboard'))
 
 @app.route('/logout')

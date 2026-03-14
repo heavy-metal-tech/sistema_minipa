@@ -10,6 +10,7 @@ class User(UserMixin, db.Model):
     password = db.Column(db.String(200), nullable=False)
     nome_completo = db.Column(db.String(100))
     is_admin = db.Column(db.Boolean, default=False)
+    is_gerente = db.Column(db.Boolean, default=False)
 
 class TabelaPreco(db.Model):
     id = db.Column(db.Integer, primary_key=True)
