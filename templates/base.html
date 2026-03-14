@@ -173,7 +173,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
       Relatório de Estoque
     </a>
-    {% if current_user.is_admin %}
+    {% if current_user.is_admin or current_user.is_gerente %}
     <div class="nav-section">Administração</div>
     <a href="{{ url_for('tabela_precos') }}" class="{{ 'active' if request.endpoint == 'tabela_precos' }}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
@@ -185,7 +185,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
     <div class="sidebar-user">
       <div class="avatar">{{ current_user.nome_completo[0].upper() if current_user.nome_completo else 'U' }}</div>
       <div class="sidebar-user-info">
-        <small>{{ 'Administrador' if current_user.is_admin else 'Técnico' }}</small>
+        <small>{{ 'Administrador' if current_user.is_admin else ('Gerente' if current_user.is_gerente else 'Técnico') }}</small>
         <span>{{ current_user.nome_completo }}</span>
       </div>
     </div>
