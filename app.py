@@ -5,11 +5,11 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_2026_seguro'
+app.config['SECRET_KEY'] = 'minipa_precision_2026'
 
 basedir = os.path.abspath(os.path.dirname(__file__))
-# Mudamos o nome do banco para "final" para resetar qualquer erro de coluna
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'minipa_final.db')
+# Usando 'minipa_v6.db' para forçar o Render a criar as tabelas novas do zero
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'minipa_v6.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -53,6 +53,7 @@ def login():
         if user and check_password_hash(user.password, request.form.get('password')):
             login_user(user)
             return redirect(url_for('dashboard'))
+        flash('Usuário ou senha incorretos')
     return render_template('login.html')
 
 @app.route('/dashboard')
@@ -75,7 +76,7 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- INICIALIZAÇÃO ---
+# --- INICIALIZAÇÃO DO BANCO ---
 with app.app_context():
     db.create_all()
     if not User.query.filter_by(username='will').first():
