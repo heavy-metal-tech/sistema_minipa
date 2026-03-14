@@ -5,11 +5,11 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_precision_2026'
+app.config['SECRET_KEY'] = 'minipa_2026_seguro'
 
 basedir = os.path.abspath(os.path.dirname(__file__))
-# Usando 'minipa_v6.db' para forçar o Render a criar as tabelas novas do zero
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'minipa_v6.db')
+# Usando v7 para garantir que o banco seja criado com as colunas certas do zero
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'minipa_v7.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -31,12 +31,6 @@ class OrdemServico(db.Model):
     valor = db.Column(db.String(20), default="0,00")
     status = db.Column(db.String(30), default='Aberta')
 
-class Estoque(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    componente = db.Column(db.String(100))
-    quantidade = db.Column(db.Integer)
-    posicao = db.Column(db.String(50))
-
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -44,39 +38,36 @@ def load_user(user_id):
 # --- ROTAS ---
 @app.route('/')
 def index():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
+        # Pega os dados do formulário
         user = User.query.filter_by(username=request.form.get('username')).first()
-        if user and check_password_hash(user.password, request.form.get('password')):
+        password = request.form.get('password')
+        
+        if user and check_password_hash(user.password, password):
             login_user(user)
             return redirect(url_for('dashboard'))
-        flash('Usuário ou senha incorretos')
+        
+        flash('Usuário ou senha inválidos!')
     return render_template('login.html')
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
     ordens = OrdemServico.query.all()
-    estoque = Estoque.query.all()
-    return render_template('dashboard.html', ordens=ordens, estoque=estoque)
-
-@app.route('/deletar/<int:id>')
-@login_required
-def deletar_os(id):
-    os_para_deletar = OrdemServico.query.get_or_404(id)
-    db.session.delete(os_para_deletar)
-    db.session.commit()
-    return redirect(url_for('dashboard'))
+    return render_template('dashboard.html', ordens=ordens, estoque=[])
 
 @app.route('/logout')
 def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- INICIALIZAÇÃO DO BANCO ---
+# --- CRIAÇÃO DO USUÁRIO ---
 with app.app_context():
     db.create_all()
     if not User.query.filter_by(username='will').first():
