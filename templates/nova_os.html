@@ -300,19 +300,34 @@ function removePeca(id) {
 }
 
 // Busca CEP
+function limparEndereco() {
+  document.getElementById('input-rua').value = '';
+  document.getElementById('input-bairro').value = '';
+  document.getElementById('input-cidade').value = '';
+  document.getElementById('input-estado').value = '';
+}
+
 async function buscarCep(cep) {
-  cep = cep.replace(/\D/g,'');
-  if (cep.length !== 8) return;
+  const cepLimpo = cep.replace(/\D/g,'');
+  if (cepLimpo.length === 0) { limparEndereco(); return; }
+  if (cepLimpo.length !== 8) return;
   try {
-    const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+    const r = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
     const d = await r.json();
     if (!d.erro) {
       document.getElementById('input-rua').value = d.logradouro || '';
       document.getElementById('input-bairro').value = d.bairro || '';
       document.getElementById('input-cidade').value = d.localidade || '';
       document.getElementById('input-estado').value = d.uf || '';
+    } else {
+      limparEndereco();
     }
-  } catch(e) {}
+  } catch(e) { limparEndereco(); }
 }
+
+// Limpa endereço em tempo real ao apagar o CEP
+document.getElementById('input-cep').addEventListener('input', function() {
+  if (this.value.replace(/\D/g,'').length === 0) limparEndereco();
+});
 </script>
 {% endblock %}
