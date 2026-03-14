@@ -1,69 +1,97 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Minipa OS</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .login-container {
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            width: 300px;
-            text-align: center;
-        }
-        h2 { color: #d32f2f; margin-bottom: 1.5rem; }
-        input {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        button {
-            width: 100%;
-            padding: 10px;
-            background-color: #d32f2f;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        button:hover { background-color: #b71c1c; }
-        .flash { color: red; font-size: 0.9rem; margin-bottom: 10px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — Minipa OS</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --blue: #0077c8;
+    --blue-dark: #005fa3;
+    --red: #d42b2b;
+    --light: #eef4fb;
+    --border: #d0e3f5;
+  }
+  body { font-family: 'DM Sans', sans-serif; min-height: 100vh; display: flex; background: var(--light); }
+
+  .panel-left {
+    width: 52%; background: var(--blue);
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 48px; position: relative; overflow: hidden;
+  }
+  .panel-left::before {
+    content: ''; position: absolute; width: 500px; height: 500px;
+    border-radius: 50%; background: rgba(255,255,255,0.05); top: -100px; left: -100px;
+  }
+  .panel-left::after {
+    content: ''; position: absolute; width: 300px; height: 300px;
+    border-radius: 50%; background: rgba(255,255,255,0.06); bottom: -60px; right: -60px;
+  }
+  .panel-left-content { position: relative; z-index: 1; text-align: center; }
+  .panel-left img { height: 70px; filter: brightness(0) invert(1); margin-bottom: 28px; }
+  .panel-left h2 { color: #fff; font-size: 22px; font-weight: 600; margin-bottom: 10px; letter-spacing: -0.3px; }
+  .panel-left p { color: rgba(255,255,255,0.75); font-size: 14px; line-height: 1.6; max-width: 300px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 28px; }
+  .chip { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.9); border-radius: 20px; padding: 5px 14px; font-size: 12px; font-weight: 500; }
+
+  .panel-right { flex: 1; display: flex; align-items: center; justify-content: center; padding: 48px 40px; background: #fff; }
+  .card { width: 100%; max-width: 380px; }
+  .card-header { margin-bottom: 32px; }
+  .card-header h1 { font-size: 22px; font-weight: 700; color: #111; margin-bottom: 4px; }
+  .card-header p { color: #6b7280; font-size: 13.5px; }
+
+  label { display: block; font-size: 11.5px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit; outline: none; transition: border-color .2s, box-shadow .2s; }
+  input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0,119,200,0.12); }
+  .field { margin-bottom: 18px; }
+
+  .btn { width: 100%; padding: 13px; background: var(--blue); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; transition: background .2s, transform .1s; margin-top: 8px; }
+  .btn:hover { background: var(--blue-dark); }
+  .btn:active { transform: scale(0.98); }
+  .alert { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; }
+  .footer-note { text-align: center; margin-top: 24px; font-size: 11px; color: #9ca3af; }
+  @media (max-width: 700px) { .panel-left { display: none; } }
+</style>
 </head>
 <body>
-
-    <div class="login-container">
-        <h2>Minipa OS</h2>
-
-        {% with messages = get_flashed_messages() %}
-          {% if messages %}
-            {% for message in messages %}
-              <div class="flash">{{ message }}</div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-
-        <form action="/" method="POST">
-            <input type="text" name="username" placeholder="Usuário" required>
-            <input type="password" name="password" placeholder="Senha" required>
-            <button type="submit">ENTRAR</button>
-        </form>
+<div class="panel-left">
+  <div class="panel-left-content">
+    <img src="{{ url_for('static', filename='minipa.png') }}" alt="Minipa">
+    <h2>Sistema de Ordens de Serviço</h2>
+    <p>Assistência Técnica Autorizada — Controle completo de reparos, calibrações e solicitação de peças.</p>
+    <div class="chips">
+      <span class="chip">📋 Ordens de Serviço</span>
+      <span class="chip">🔧 Controle de Peças</span>
+      <span class="chip">📄 Relatórios PDF</span>
+      <span class="chip">📧 Envio à Minipa</span>
     </div>
+  </div>
+</div>
 
+<div class="panel-right">
+  <div class="card">
+    <div class="card-header">
+      <h1>Bem-vindo de volta</h1>
+      <p>Entre com suas credenciais para acessar o sistema.</p>
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}<div class="alert">{{ msg }}</div>{% endfor %}
+    {% endwith %}
+    <form method="POST">
+      <div class="field">
+        <label>Usuário</label>
+        <input type="text" name="username" placeholder="Digite seu usuário" required autofocus>
+      </div>
+      <div class="field">
+        <label>Senha</label>
+        <input type="password" name="password" placeholder="••••••••" required>
+      </div>
+      <button class="btn" type="submit">ENTRAR</button>
+    </form>
+    <p class="footer-note">Minipa Precision — Uso interno. Acesso restrito.</p>
+  </div>
+</div>
 </body>
 </html>

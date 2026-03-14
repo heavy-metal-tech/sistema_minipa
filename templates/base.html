@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Minipa OS{% endblock %}</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --blue: #0077c8;
+  --blue-dark: #005fa3;
+  --blue-deeper: #003f6e;
+  --red: #d42b2b;
+  --light: #eef4fb;
+  --border: #d0e3f5;
+  --text: #1f2937;
+  --muted: #5a7a99;
+  --sidebar-w: 228px;
+}
+body { font-family: 'DM Sans', sans-serif; background: var(--light); color: var(--text); display: flex; min-height: 100vh; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--blue-deeper);
+  min-height: 100vh; position: fixed; top: 0; left: 0;
+  display: flex; flex-direction: column; padding: 0 0 24px; z-index: 100;
+}
+.sidebar-logo {
+  padding: 20px 18px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+}
+.sidebar-logo img {
+  height: 36px; width: auto; object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+.sidebar-logo p {
+  color: rgba(255,255,255,0.45); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: 0.6px;
+}
+nav { padding: 14px 10px; flex: 1; }
+nav a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: 8px;
+  color: rgba(255,255,255,0.65); text-decoration: none;
+  font-size: 13.5px; font-weight: 500; margin-bottom: 2px;
+  transition: background .15s, color .15s;
+}
+nav a:hover { background: rgba(255,255,255,0.1); color: #fff; }
+nav a.active { background: var(--blue); color: #fff; }
+nav a svg { width: 16px; height: 16px; flex-shrink: 0; }
+.nav-section {
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px; color: rgba(255,255,255,0.3);
+  padding: 14px 12px 6px;
+}
+.sidebar-footer { padding: 0 10px; }
+.sidebar-user {
+  background: rgba(255,255,255,0.08); border-radius: 10px;
+  padding: 10px 12px; display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.avatar {
+  width: 32px; height: 32px; background: var(--blue); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 13px; flex-shrink: 0;
+}
+.sidebar-user-info small { display: block; color: rgba(255,255,255,0.4); font-size: 10px; }
+.sidebar-user-info span { color: #fff; font-size: 12px; font-weight: 500; }
+.btn-logout {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 9px 12px; border-radius: 8px;
+  color: rgba(255,255,255,0.45); text-decoration: none;
+  font-size: 13px; transition: background .15s, color .15s;
+}
+.btn-logout:hover { background: rgba(212,43,43,0.25); color: #f87171; }
+
+/* ── Main ── */
+.main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
+.topbar {
+  background: #fff; border-bottom: 1px solid var(--border);
+  padding: 14px 32px; display: flex; align-items: center;
+  justify-content: space-between; position: sticky; top: 0; z-index: 50;
+  box-shadow: 0 1px 4px rgba(0,119,200,0.07);
+}
+.topbar h1 { font-size: 17px; font-weight: 600; color: var(--blue-deeper); }
+.topbar-actions { display: flex; gap: 10px; }
+.content { padding: 26px 32px; }
+
+/* ── Buttons ── */
+.btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px;
+       border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+       border: none; font-family: inherit; text-decoration: none; transition: all .15s; }
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover { background: var(--blue-dark); }
+.btn-blue { background: var(--blue-deeper); color: #fff; }
+.btn-blue:hover { background: #002d50; }
+.btn-red { background: var(--red); color: #fff; }
+.btn-red:hover { background: #b91c1c; }
+.btn-outline { background: #fff; color: var(--text); border: 1.5px solid var(--border); }
+.btn-outline:hover { border-color: var(--blue); color: var(--blue); }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-green { background: #16a34a; color: #fff; }
+.btn-green:hover { background: #15803d; }
+
+/* ── Cards ── */
+.card { background: #fff; border-radius: 12px; border: 1px solid var(--border); padding: 22px; box-shadow: 0 1px 6px rgba(0,119,200,0.05); }
+
+/* ── Badge ── */
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
+
+/* ── Table ── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+thead th { padding: 9px 14px; text-align: left; font-size: 10.5px; font-weight: 700;
+           text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted);
+           border-bottom: 2px solid var(--border); }
+tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+tbody tr:hover { background: #f0f6fd; }
+tbody td { padding: 11px 14px; }
+
+/* ── Flash ── */
+.flash-wrap { padding: 16px 32px 0; }
+.flash { padding: 10px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 8px; }
+.flash.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+.flash.error { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+
+/* ── Forms ── */
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 11px; font-weight: 700; color: #374151;
+              text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.form-control {
+  width: 100%; padding: 10px 13px; border: 1.5px solid var(--border);
+  border-radius: 8px; font-size: 13.5px; font-family: inherit;
+  outline: none; transition: border-color .2s, box-shadow .2s; background: #fff;
+}
+.form-control:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0,119,200,0.1); }
+select.form-control { cursor: pointer; }
+textarea.form-control { resize: vertical; min-height: 90px; }
+.form-row { display: grid; gap: 14px; }
+.col-2 { grid-template-columns: 1fr 1fr; }
+.col-3 { grid-template-columns: 1fr 1fr 1fr; }
+.col-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+.section-title {
+  font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--blue); padding: 5px 12px;
+  background: rgba(0,119,200,0.07);
+  border-left: 3px solid var(--blue);
+  border-radius: 0 6px 6px 0; margin-bottom: 18px;
+}
+</style>
+{% block extra_css %}{% endblock %}
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <img src="{{ url_for('static', filename='minipa.png') }}" alt="Minipa">
+    <p>Assistência Técnica Autorizada</p>
+  </div>
+  <nav>
+    <div class="nav-section">Principal</div>
+    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </a>
+    <a href="{{ url_for('nova_os') }}" class="{{ 'active' if request.endpoint == 'nova_os' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      Nova OS
+    </a>
+    <div class="nav-section">Relatórios</div>
+    <a href="{{ url_for('pdf_estoque') }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+      Relatório de Estoque
+    </a>
+    {% if current_user.is_admin %}
+    <div class="nav-section">Administração</div>
+    <a href="{{ url_for('tabela_precos') }}" class="{{ 'active' if request.endpoint == 'tabela_precos' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      Tabela de Preços
+    </a>
+    {% endif %}
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-user">
+      <div class="avatar">{{ current_user.nome_completo[0].upper() if current_user.nome_completo else 'U' }}</div>
+      <div class="sidebar-user-info">
+        <small>{{ 'Administrador' if current_user.is_admin else 'Técnico' }}</small>
+        <span>{{ current_user.nome_completo }}</span>
+      </div>
+    </div>
+    <a href="{{ url_for('logout') }}" class="btn-logout">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Sair do sistema
+    </a>
+  </div>
+</aside>
+
+<div class="main">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-wrap">
+      {% for cat, msg in messages %}
+        <div class="flash {{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Tabela de Preços — Minipa OS{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>Tabela de Preços</h1>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-outline">← Voltar</a>
+</div>
+<div class="content">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+
+    <div class="card">
+      <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Tipos de Serviço Cadastrados</h2>
+      <table>
+        <thead><tr><th>Tipo de Serviço</th><th>Valor</th><th></th></tr></thead>
+        <tbody>
+          {% for t in tabela %}
+          <tr>
+            <td>{{ t.tipo_servico }}</td>
+            <td style="font-weight:600;color:#0d2d6b;">R$ {{ '%.2f'|format(t.valor) }}</td>
+            <td>
+              <form method="POST" style="display:inline;">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="id" value="{{ t.id }}">
+                <button type="submit" class="btn btn-outline btn-sm" style="color:#d42b2b;border-color:#fecaca;"
+                        onclick="return confirm('Remover?')">Remover</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" style="color:#9ca3af;text-align:center;padding:20px;">Nenhum serviço cadastrado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Adicionar Novo Serviço</h2>
+      <form method="POST">
+        <input type="hidden" name="action" value="add">
+        <div class="form-group">
+          <label class="form-label">Tipo de Serviço</label>
+          <input class="form-control" name="tipo_servico" placeholder="Ex: Reparo com PCI" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Valor (R$)</label>
+          <input class="form-control" name="valor" type="number" step="0.01" placeholder="150.00" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Cadastrar</button>
+      </form>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

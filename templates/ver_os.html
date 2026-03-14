@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+{% block title %}OS #{{ '%05d' % os.id }} — Minipa OS{% endblock %}
+{% block content %}
+{% set cor = STATUS_COLORS.get(os.status, '#6b7280') %}
+<div class="topbar">
+  <h1>
+    OS <strong>#{{ '%05d' % os.id }}</strong>
+    &nbsp;
+    <span class="badge" style="background:{{ cor }}20;color:{{ cor }};font-size:13px;vertical-align:middle;">{{ os.status }}</span>
+  </h1>
+  <div class="topbar-actions">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline">← Voltar</a>
+    <a href="{{ url_for('pdf_os', id=os.id) }}" class="btn btn-blue" target="_blank">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+      Gerar PDF
+    </a>
+    <form method="POST" action="{{ url_for('enviar_email', id=os.id) }}" style="display:inline;">
+      <button type="submit" class="btn btn-green" onclick="return confirm('Enviar OS para Minipa por e-mail?')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Enviar para Minipa
+      </button>
+    </form>
+  </div>
+</div>
+<div class="content">
+
+  <!-- Alterar Status -->
+  <div class="card" style="margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <span style="font-size:13px;font-weight:600;">Alterar Status:</span>
+    <form method="POST" action="{{ url_for('atualizar_status', id=os.id) }}" style="display:flex;gap:8px;align-items:center;">
+      <select name="status" class="form-control" style="width:220px;padding:8px 12px;">
+        {% for s in ['Aberta','Em análise','Aguardando peça','Concluída','Enviada para fabricante'] %}
+          <option value="{{ s }}" {{ 'selected' if os.status == s }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary btn-sm">Salvar</button>
+    </form>
+    <div style="margin-left:auto;color:#9ca3af;font-size:12px;">
+      Aberta em: {{ os.data_abertura.strftime('%d/%m/%Y às %H:%M') if os.data_abertura else '—' }}
+      &nbsp;|&nbsp; Técnico: {{ os.tecnico or '—' }}
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+    <!-- Cliente -->
+    <div class="card">
+      <div class="section-title">Dados do Cliente</div>
+      <table style="font-size:13px;">
+        <tbody>
+          <tr><td style="color:#6b7280;padding:5px 0;width:130px;">{{ 'Razão Social' if os.tipo_pessoa == 'PJ' else 'Nome' }}</td><td><strong>{{ os.cliente or '—' }}</strong></td></tr>
+          {% if os.tipo_pessoa == 'PJ' %}
+          <tr><td style="color:#6b7280;padding:5px 0;">Nome Fantasia</td><td>{{ os.nome_fantasia or '—' }}</td></tr>
+          <tr><td style="color:#6b7280;padding:5px 0;">CNPJ</td><td>{{ os.cpf_cnpj or '—' }}</td></tr>
+          <tr><td style="color:#6b7280;padding:5px 0;">Insc. Estadual</td><td>{{ os.inscricao_estadual or '—' }}</td></tr>
+          <tr><td style="color:#6b7280;padding:5px 0;">Insc. Municipal</td><td>{{ os.inscricao_municipal or '—' }}</td></tr>
+          {% else %}
+          <tr><td style="color:#6b7280;padding:5px 0;">CPF</td><td>{{ os.cpf_cnpj or '—' }}</td></tr>
+          {% endif %}
+          <tr><td style="color:#6b7280;padding:5px 0;">Telefone</td><td>{{ os.telefone or '—' }}</td></tr>
+          <tr><td style="color:#6b7280;padding:5px 0;">E-mail</td><td>{{ os.email or '—' }}</td></tr>
+          <tr><td style="color:#6b7280;padding:5px 0;">Endereço</td><td>{{ os.endereco or '—' }}, {{ os.numero or '' }} {{ os.complemento or '' }}</td></tr>
+          <tr><td style="color:#6b7280;padding:5px 0;">Cidade/UF</td><td>{{ os.cidade or '—' }} / {{ os.estado or '—' }} — CEP {{ os.cep or '—' }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Equipamento -->
+    <div class="card">
+      <div class="section-title">Dados do Equipamento</div>
+      <table style="font-size:13px;">
+        <tbody>
+          <tr><td style="color:#6b7280;padding:5px 0;width:130px;">Marca</td><td>{{ os.marca or '—' }}</td></tr>
+          <tr><td style="color:#6b7280;padding:5px 0;">Modelo</td><td><strong>{{ os.equipamento }}</strong></td></tr>
+          <tr><td style="color:#6b7280;padding:5px 0;">Nº de Série</td><td>{{ os.serie }}</td></tr>
+          <tr><td style="color:#6b7280;padding:5px 0;">Nota Fiscal</td><td>{{ os.nota_fiscal or '—' }}</td></tr>
+          <tr><td style="color:#6b7280;padding:5px 0;">Data NF</td><td>{{ os.data_nf or '—' }}</td></tr>
+          <tr><td style="color:#6b7280;padding:5px 0;">Em Garantia</td>
+            <td>
+              {% if os.garantia == 'Sim' %}
+                <span class="badge" style="background:#f0fdf4;color:#16a34a;">✔ Sim</span>
+              {% else %}
+                <span class="badge" style="background:#fef2f2;color:#d42b2b;">✘ Não</span>
+              {% endif %}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Defeito -->
+  <div class="card" style="margin-top:20px;">
+    <div class="section-title">Defeito Informado pelo Cliente</div>
+    <p style="font-size:14px;line-height:1.6;color:#374151;">{{ os.defeito or 'Nenhum defeito informado.' }}</p>
+  </div>
+
+  <!-- Peças -->
+  <div class="card" style="margin-top:20px;">
+    <div class="section-title">Peças Solicitadas</div>
+    {% if os.pecas %}
+    <table>
+      <thead>
+        <tr><th>Código</th><th>Descrição</th><th>Qtd</th><th>Observações</th></tr>
+      </thead>
+      <tbody>
+        {% for peca in os.pecas %}
+        <tr>
+          <td style="font-family:monospace;">{{ peca.codigo or '—' }}</td>
+          <td>{{ peca.descricao }}</td>
+          <td>{{ peca.quantidade }}</td>
+          <td style="color:#6b7280;">{{ peca.observacoes or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:#9ca3af;font-size:13px;">Nenhuma peça solicitada.</p>
+    {% endif %}
+  </div>
+
+  <!-- Serviço -->
+  <div class="card" style="margin-top:20px;">
+    <div class="section-title">Serviço e Valor</div>
+    <div style="display:flex;gap:40px;font-size:14px;">
+      <div>
+        <div style="color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Tipo de Serviço</div>
+        <div style="font-weight:600;">{{ os.tipo_servico or '—' }}</div>
+      </div>
+      <div>
+        <div style="color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Valor Estimado</div>
+        <div style="font-size:22px;font-weight:700;color:#0d2d6b;">R$ {{ os.valor or '0,00' }}</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
