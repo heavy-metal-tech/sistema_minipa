@@ -1,204 +1,90 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minipa Precision | Registro de Entrada</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --minipa-blue: #0d47a1;
-            --minipa-red: #d32f2f;
-            --dark-blue: #061a33;
-        }
+import os
+from flask import Flask, render_template, redirect, url_for, request, flash
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 
-        body { 
-            background-color: #f0f2f5; 
-            font-family: 'Inter', sans-serif;
-            color: #2c3e50;
-        }
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'minipa_precision_2026'
 
-        /* Navbar Sincronizada */
-        .navbar { 
-            background: white; 
-            border-bottom: 4px solid var(--minipa-blue);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        .navbar-brand img { height: 50px; }
+basedir = os.path.abspath(os.path.dirname(__file__))
+# Mudando para v9 para garantir que o banco de dados resete sem erros de coluna
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'minipa_v9.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-        /* Card de Registro */
-        .card-os {
-            background: white;
-            border: none;
-            border-radius: 20px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
+db = SQLAlchemy(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
 
-        .os-header {
-            background: linear-gradient(135deg, var(--dark-blue), var(--minipa-blue));
-            color: white;
-            padding: 25px;
-            text-align: center;
-        }
+# --- MODELOS ---
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+    nome_completo = db.Column(db.String(100), default="Técnico Minipa")
 
-        .form-label {
-            font-weight: 700;
-            font-size: 0.85rem;
-            color: var(--dark-blue);
-            text-transform: uppercase;
-            margin-bottom: 8px;
-        }
+class OrdemServico(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    cliente = db.Column(db.String(100), nullable=False)
+    equipamento = db.Column(db.String(100), nullable=False)
+    serie = db.Column(db.String(50), nullable=False)
+    valor = db.Column(db.String(20), default="0,00")
+    status = db.Column(db.String(30), default='Aberta')
 
-        .form-control {
-            border-radius: 10px;
-            padding: 12px;
-            border: 2px solid #eef2f7;
-            background: #f8f9fa;
-            transition: 0.3s;
-        }
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
-        .form-control:focus {
-            border-color: var(--minipa-blue);
-            background: white;
-            box-shadow: 0 0 0 4px rgba(13, 71, 161, 0.1);
-        }
+# --- ROTAS ---
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
 
-        /* Tique de Garantia Customizado */
-        .garantia-selector {
-            display: flex;
-            gap: 15px;
-        }
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user = User.query.filter_by(username=request.form.get('username')).first()
+        if user and check_password_hash(user.password, request.form.get('password')):
+            login_user(user)
+            return redirect(url_for('dashboard'))
+    return render_template('login.html')
 
-        .garantia-option {
-            flex: 1;
-            position: relative;
-        }
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    ordens = OrdemServico.query.all()
+    return render_template('dashboard.html', ordens=ordens)
 
-        .garantia-option input {
-            position: absolute;
-            opacity: 0;
-            cursor: pointer;
-        }
+@app.route('/nova_os', methods=['GET', 'POST'])
+@login_required
+def nova_os():
+    if request.method == 'POST':
+        nova = OrdemServico(
+            cliente=request.form.get('cliente'),
+            equipamento=request.form.get('equipamento'),
+            serie=request.form.get('serie'),
+            valor=request.form.get('valor')
+        )
+        db.session.add(nova)
+        db.session.commit()
+        return redirect(url_for('dashboard'))
+    return render_template('nova_os.html')
 
-        .garantia-btn {
-            display: block;
-            text-align: center;
-            padding: 10px;
-            background: #f8f9fa;
-            border: 2px solid #eef2f7;
-            border-radius: 10px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.3s;
-        }
+@app.route('/logout')
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
 
-        .garantia-option input:checked + .garantia-btn {
-            background: var(--minipa-blue);
-            color: white;
-            border-color: var(--minipa-blue);
-        }
+# --- BANCO ---
+with app.app_context():
+    db.create_all()
+    if not User.query.filter_by(username='will').first():
+        db.session.add(User(
+            username='will', 
+            password=generate_password_hash('123'),
+            nome_completo="Willian Técnico"
+        ))
+        db.session.commit()
 
-        .btn-finalizar {
-            background: var(--minipa-red);
-            color: white;
-            border: none;
-            padding: 15px;
-            border-radius: 12px;
-            font-weight: 800;
-            width: 100%;
-            transition: 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .btn-finalizar:hover {
-            background: #b71c1c;
-            transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(211, 47, 47, 0.3);
-        }
-    </style>
-</head>
-<body>
-
-<nav class="navbar mb-5">
-    <div class="container d-flex justify-content-center">
-        <a class="navbar-brand" href="{{ url_for('dashboard') }}">
-            <img src="{{ url_for('static', filename='logo.png') }}">
-        </a>
-    </div>
-</nav>
-
-<div class="container pb-5">
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card-os">
-                <div class="os-header">
-                    <h4 class="mb-0 fw-bold"><i class="fas fa-file-signature me-2"></i>Nova Ordem de Serviço</h4>
-                    <small class="opacity-75">Unidade de Manutenção e Calibração</small>
-                </div>
-                
-                <div class="card-body p-4 p-md-5">
-                    <form action="{{ url_for('nova_os') }}" method="POST">
-                        <div class="mb-4">
-                            <label class="form-label">Cliente / Razão Social</label>
-                            <input type="text" name="cliente" class="form-control shadow-sm" placeholder="Nome completo do cliente" required>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-7 mb-4">
-                                <label class="form-label">Equipamento</label>
-                                <input type="text" name="equipamento" class="form-control shadow-sm" placeholder="Ex: Multímetro ET-2042E" required>
-                            </div>
-                            <div class="col-md-5 mb-4">
-                                <label class="form-label">Número de Série</label>
-                                <input type="text" name="serie" class="form-control shadow-sm" placeholder="S/N" required>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-4">
-                                <label class="form-label">Status da Garantia</label>
-                                <div class="garantia-selector">
-                                    <label class="garantia-option">
-                                        <input type="radio" name="garantia" value="Não" checked>
-                                        <span class="garantia-btn"><i class="fas fa-times-circle me-1"></i> Fora</span>
-                                    </label>
-                                    <label class="garantia-option">
-                                        <input type="radio" name="garantia" value="Sim">
-                                        <span class="garantia-btn"><i class="fas fa-check-circle me-1"></i> Em Garantia</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-md-6 mb-4">
-                                <label class="form-label">Valor Estimado (R$)</label>
-                                <input type="text" name="valor" class="form-control shadow-sm" placeholder="0,00">
-                            </div>
-                        </div>
-
-                        <div class="mb-5">
-                            <label class="form-label">Descrição do Defeito</label>
-                            <textarea name="defeito" class="form-control shadow-sm" rows="4" placeholder="Descreva os problemas relatados..."></textarea>
-                        </div>
-
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <a href="{{ url_for('dashboard') }}" class="btn btn-light w-100 py-3 fw-bold text-muted rounded-pill">CANCELAR</a>
-                            </div>
-                            <div class="col-md-8">
-                                <button type="submit" class="btn btn-finalizar shadow">GERAR ORDEM DE SERVIÇO</button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-            <div class="text-center mt-4">
-                <p class="small text-muted">Registro realizado pelo técnico: <strong>{{ current_user.nome_completo }}</strong></p>
-            </div>
-        </div>
-    </div>
-</div>
-
-</body>
-</html>
+if __name__ == '__main__':
+    app.run(debug=True)
