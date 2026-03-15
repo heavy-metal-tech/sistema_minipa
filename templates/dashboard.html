@@ -160,16 +160,22 @@
     <div class="card">
       <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Inventário Crítico</h2>
       <table>
-        <thead><tr><th>Item</th><th>Qtd</th><th>Posição</th></tr></thead>
+        <thead><tr><th>Item</th><th>Qtd</th><th>Posição</th><th></th></tr></thead>
         <tbody>
           {% for item in estoque %}
           <tr>
             <td>{{ item.componente }}</td>
             <td><span style="font-weight:600;color:{{ '#d42b2b' if item.quantidade < 5 else '#16a34a' }};">{{ item.quantidade }}</span></td>
             <td style="color:#6b7280;">{{ item.posicao or '—' }}</td>
+            <td>
+              <form method="POST" action="{{ url_for('delete_estoque', id=item.id) }}" style="display:inline;">
+                <button type="submit" onclick="return confirm('Remover item do estoque?')"
+                  style="background:none;border:none;cursor:pointer;color:#d42b2b;font-size:16px;padding:2px 6px;" title="Remover">✕</button>
+              </form>
+            </td>
           </tr>
           {% else %}
-          <tr><td colspan="3" style="color:#9ca3af;text-align:center;padding:20px;">Estoque vazio.</td></tr>
+          <tr><td colspan="4" style="color:#9ca3af;text-align:center;padding:20px;">Estoque vazio.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -184,34 +190,69 @@
     <!-- Técnicos -->
     {% if current_user.is_admin or current_user.is_gerente %}
     <div class="card">
-      <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Gerenciamento de Técnicos</h2>
-      <form method="POST" action="{{ url_for('novo_tecnico') }}">
-        <div class="form-group">
-          <label class="form-label">Nome Completo</label>
-          <input class="form-control" name="nome" placeholder="Nome do técnico" required>
-        </div>
-        <div class="form-row col-2">
+      <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Gerenciamento de Usuários</h2>
+
+      <!-- Lista de usuários -->
+      <table style="margin-bottom:16px;">
+        <thead><tr><th>Nome</th><th>Login</th><th>Nível</th><th></th></tr></thead>
+        <tbody>
+          {% for u in usuarios %}
+          <tr>
+            <td>{{ u.nome_completo }}</td>
+            <td style="color:#6b7280;font-family:monospace;font-size:12px;">{{ u.username }}</td>
+            <td>
+              {% if u.is_admin %}
+                <span class="badge" style="background:#fef3c7;color:#92400e;">⚙️ Admin</span>
+              {% elif u.is_gerente %}
+                <span class="badge" style="background:#ede9fe;color:#5b21b6;">👔 Gerente</span>
+              {% else %}
+                <span class="badge" style="background:#e0f0ff;color:#0077c8;">🔧 Técnico</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if u.id != current_user.id %}
+              <form method="POST" action="{{ url_for('delete_usuario', id=u.id) }}" style="display:inline;">
+                <button type="submit" onclick="return confirm('Deletar usuário {{ u.nome_completo }}?')"
+                  style="background:none;border:none;cursor:pointer;color:#d42b2b;font-size:16px;padding:2px 6px;" title="Deletar">✕</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <!-- Formulário novo usuário -->
+      <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:12px;">Novo Acesso</div>
+        <form method="POST" action="{{ url_for('novo_tecnico') }}">
           <div class="form-group">
-            <label class="form-label">Login</label>
-            <input class="form-control" name="username" placeholder="usuário" required>
+            <label class="form-label">Nome Completo</label>
+            <input class="form-control" name="nome" placeholder="Nome do técnico" required>
+          </div>
+          <div class="form-row col-2">
+            <div class="form-group">
+              <label class="form-label">Login</label>
+              <input class="form-control" name="username" placeholder="usuário" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Senha</label>
+              <input class="form-control" type="password" name="password" placeholder="••••••" required>
+            </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Senha</label>
-            <input class="form-control" type="password" name="password" placeholder="••••••" required>
+            <label class="form-label">Nível de Acesso</label>
+            <select name="cargo" class="form-control">
+              <option value="tecnico">🔧 Técnico</option>
+              <option value="gerente">👔 Gerente</option>
+              {% if current_user.is_admin %}
+              <option value="admin">⚙️ Administrador</option>
+              {% endif %}
+            </select>
           </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Nível de Acesso</label>
-          <select name="cargo" class="form-control">
-            <option value="tecnico">🔧 Técnico</option>
-            <option value="gerente">👔 Gerente</option>
-            {% if current_user.is_admin %}
-            <option value="admin">⚙️ Administrador</option>
-            {% endif %}
-          </select>
-        </div>
-        <button class="btn btn-blue" type="submit" style="width:100%;">Cadastrar Novo Acesso</button>
-      </form>
+          <button class="btn btn-blue" type="submit" style="width:100%;">Cadastrar Novo Acesso</button>
+        </form>
+      </div>
     </div>
     {% endif %}
   </div>
