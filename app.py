@@ -16,12 +16,7 @@ from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'minipa_top_secret_2026'
 
-basedir = os.path.abspath(os.path.dirname(__file__))
-instance_dir = os.path.join(basedir, 'instance')
-if not os.path.exists(instance_dir):
-    os.makedirs(instance_dir)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_dir, 'minipa_v3.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///instance/minipa_v3.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # E-mail config (edite conforme seu servidor SMTP)
