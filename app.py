@@ -1,4 +1,5 @@
 import os, io, smtplib
+import psycopg2cffi_compat  # noqa
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
