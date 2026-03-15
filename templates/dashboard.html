@@ -1,5 +1,22 @@
 {% extends 'base.html' %}
 {% block title %}Dashboard — Minipa OS{% endblock %}
+{% block extra_css %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+.stat-card {
+  background: #fff; border-radius: 12px; border: 1px solid var(--border);
+  padding: 20px 24px; display: flex; align-items: center; gap: 16px;
+  box-shadow: 0 1px 6px rgba(0,119,200,0.05);
+}
+.stat-icon {
+  width: 48px; height: 48px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.stat-icon svg { width: 22px; height: 22px; }
+.stat-value { font-size: 26px; font-weight: 800; line-height: 1; margin-bottom: 3px; }
+.stat-label { font-size: 12px; color: #6b7280; font-weight: 500; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="topbar">
   <h1>Dashboard</h1>
@@ -12,32 +29,92 @@
 </div>
 <div class="content">
 
-  <!-- Stats -->
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
-    <div class="card" style="text-align:center;">
-      <div style="font-size:28px;font-weight:700;color:#2563eb;">{{ stats.total }}</div>
-      <div style="font-size:12px;color:#6b7280;margin-top:4px;">Total de OS</div>
+  <!-- Stats Cards -->
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px;">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#e0f0ff;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0077c8" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" style="color:#0077c8;">{{ stats.total }}</div>
+        <div class="stat-label">Total de OS</div>
+      </div>
     </div>
-    <div class="card" style="text-align:center;">
-      <div style="font-size:28px;font-weight:700;color:#d42b2b;">{{ stats.abertas }}</div>
-      <div style="font-size:12px;color:#6b7280;margin-top:4px;">Em Aberto</div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#fef2f2;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#d42b2b" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" style="color:#d42b2b;">{{ stats.abertas }}</div>
+        <div class="stat-label">Em Aberto</div>
+      </div>
     </div>
-    <div class="card" style="text-align:center;">
-      <div style="font-size:28px;font-weight:700;color:#7c3aed;">{{ stats.aguardando }}</div>
-      <div style="font-size:12px;color:#6b7280;margin-top:4px;">Aguardando Peça</div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#f5f3ff;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" style="color:#7c3aed;">{{ stats.aguardando }}</div>
+        <div class="stat-label">Aguardando Peça</div>
+      </div>
     </div>
-    <div class="card" style="text-align:center;">
-      <div style="font-size:28px;font-weight:700;color:#16a34a;">{{ stats.concluidas }}</div>
-      <div style="font-size:12px;color:#6b7280;margin-top:4px;">Concluídas</div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#f0fdf4;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" style="color:#16a34a;">{{ stats.concluidas }}</div>
+        <div class="stat-label">Concluídas</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#fff7ed;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      </div>
+      <div>
+        <div class="stat-value" style="color:#d97706;font-size:18px;">R$ {{ '%.0f'|format(stats.faturamento) }}</div>
+        <div class="stat-label">Faturamento Total</div>
+      </div>
     </div>
   </div>
+
+  <!-- Gráficos -->
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:24px;">
+
+    <!-- OS por mês -->
+    <div class="card">
+      <h2 style="font-size:14px;font-weight:700;color:#003f6e;margin-bottom:16px;text-transform:uppercase;letter-spacing:.5px;">
+        📈 Ordens de Serviço — Últimos 6 Meses
+      </h2>
+      <canvas id="chartMeses" height="100"></canvas>
+    </div>
+
+    <!-- Por status -->
+    <div class="card">
+      <h2 style="font-size:14px;font-weight:700;color:#003f6e;margin-bottom:16px;text-transform:uppercase;letter-spacing:.5px;">
+        🔵 OS por Status
+      </h2>
+      <canvas id="chartStatus" height="180"></canvas>
+    </div>
+
+  </div>
+
+  <!-- Top Equipamentos -->
+  {% if top_equip %}
+  <div class="card" style="margin-bottom:24px;">
+    <h2 style="font-size:14px;font-weight:700;color:#003f6e;margin-bottom:16px;text-transform:uppercase;letter-spacing:.5px;">
+      🔧 Equipamentos Mais Atendidos
+    </h2>
+    <canvas id="chartEquip" height="60"></canvas>
+  </div>
+  {% endif %}
 
   <!-- Fila de Reparo -->
   <div class="card" style="margin-bottom:24px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
       <h2 style="font-size:15px;font-weight:600;">Fila de Reparo</h2>
       <form method="GET" style="display:flex;gap:8px;flex-wrap:wrap;">
-        <input type="text" name="q" value="{{ q }}" placeholder="Buscar por cliente, equipamento ou Nº..." class="form-control" style="width:260px;padding:8px 12px;">
+        <input type="text" name="q" value="{{ q }}" placeholder="Buscar cliente, equipamento ou Nº..." class="form-control" style="width:260px;padding:8px 12px;">
         <select name="status" class="form-control" style="width:auto;padding:8px 12px;">
           <option value="">Todos os status</option>
           {% for s in ['Aberta','Em análise','Aguardando peça','Concluída','Enviada para fabricante'] %}
@@ -51,9 +128,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr>
-            <th>OS</th><th>Data</th><th>Cliente</th><th>Equipamento</th><th>Status</th><th>Valor</th><th>Ações</th>
-          </tr>
+          <tr><th>OS</th><th>Data</th><th>Cliente</th><th>Equipamento</th><th>Status</th><th>Valor</th><th>Ações</th></tr>
         </thead>
         <tbody>
           {% for os in ordens %}
@@ -64,14 +139,12 @@
             <td>{{ os.equipamento }}</td>
             <td>
               {% set cor = STATUS_COLORS.get(os.status, '#6b7280') %}
-              <span class="badge" style="background:{{ cor }}20;color:{{ cor }};">
-                {{ os.status }}
-              </span>
+              <span class="badge" style="background:{{ cor }}20;color:{{ cor }};">{{ os.status }}</span>
             </td>
             <td>R$ {{ os.valor or '—' }}</td>
             <td style="display:flex;gap:6px;">
               <a href="{{ url_for('ver_os', id=os.id) }}" class="btn btn-outline btn-sm">Ver</a>
-              <a href="{{ url_for('pdf_os', id=os.id) }}" class="btn btn-blue btn-sm" title="Gerar PDF">PDF</a>
+              <a href="{{ url_for('pdf_os', id=os.id) }}" class="btn btn-blue btn-sm">PDF</a>
             </td>
           </tr>
           {% else %}
@@ -83,7 +156,6 @@
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
-
     <!-- Estoque -->
     <div class="card">
       <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Inventário Crítico</h2>
@@ -93,9 +165,7 @@
           {% for item in estoque %}
           <tr>
             <td>{{ item.componente }}</td>
-            <td>
-              <span style="font-weight:600;color:{{ '#d42b2b' if item.quantidade < 5 else '#16a34a' }};">{{ item.quantidade }}</span>
-            </td>
+            <td><span style="font-weight:600;color:{{ '#d42b2b' if item.quantidade < 5 else '#16a34a' }};">{{ item.quantidade }}</span></td>
             <td style="color:#6b7280;">{{ item.posicao or '—' }}</td>
           </tr>
           {% else %}
@@ -134,7 +204,7 @@
           <label class="form-label">Nível de Acesso</label>
           <select name="cargo" class="form-control">
             <option value="tecnico">🔧 Técnico</option>
-            <option value="gerente">👔 Gerente (chefe)</option>
+            <option value="gerente">👔 Gerente</option>
             {% if current_user.is_admin %}
             <option value="admin">⚙️ Administrador</option>
             {% endif %}
@@ -147,4 +217,89 @@
   </div>
 
 </div>
+
+<script>
+const blue = '#0077c8';
+const blueLight = 'rgba(0,119,200,0.15)';
+const red = '#d42b2b';
+const green = '#16a34a';
+const purple = '#7c3aed';
+const orange = '#d97706';
+const cyan = '#0891b2';
+
+// Gráfico OS por mês
+new Chart(document.getElementById('chartMeses'), {
+  type: 'bar',
+  data: {
+    labels: {{ meses | tojson }},
+    datasets: [{
+      label: 'Ordens de Serviço',
+      data: {{ os_por_mes | tojson }},
+      backgroundColor: blueLight,
+      borderColor: blue,
+      borderWidth: 2,
+      borderRadius: 6,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f0f4f8' } },
+      x: { grid: { display: false } }
+    }
+  }
+});
+
+// Gráfico por status (doughnut)
+const statusLabels = {{ status_labels | tojson }};
+const statusData = {{ status_data | tojson }};
+const statusColors = [blue, orange, purple, green, cyan];
+new Chart(document.getElementById('chartStatus'), {
+  type: 'doughnut',
+  data: {
+    labels: statusLabels,
+    datasets: [{
+      data: statusData,
+      backgroundColor: statusColors,
+      borderWidth: 2,
+      borderColor: '#fff',
+    }]
+  },
+  options: {
+    responsive: true,
+    cutout: '65%',
+    plugins: {
+      legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 10 } }
+    }
+  }
+});
+
+// Top equipamentos
+{% if top_equip %}
+new Chart(document.getElementById('chartEquip'), {
+  type: 'bar',
+  data: {
+    labels: {{ top_equip | map(attribute=0) | list | tojson }},
+    datasets: [{
+      label: 'Nº de OS',
+      data: {{ top_equip | map(attribute=1) | list | tojson }},
+      backgroundColor: [blue, blueLight, 'rgba(0,119,200,0.4)', 'rgba(0,119,200,0.6)', 'rgba(0,119,200,0.8)'],
+      borderColor: blue,
+      borderWidth: 1,
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f0f4f8' } },
+      y: { grid: { display: false } }
+    }
+  }
+});
+{% endif %}
+</script>
 {% endblock %}
