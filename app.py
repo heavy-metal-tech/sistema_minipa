@@ -283,14 +283,14 @@ def login():
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    from collections import defaultdict
     q = request.args.get('q', '')
     status_filter = request.args.get('status', '')
     query = OrdemServico.query
     if q:
         query = query.filter(
             OrdemServico.cliente.ilike(f'%{q}%') |
-            OrdemServico.equipamento.ilike(f'%{q}%') |
-            OrdemServico.id.like(f'%{q}%')
+            OrdemServico.equipamento.ilike(f'%{q}%')
         )
     if status_filter:
         query = query.filter_by(status=status_filter)
@@ -301,10 +301,33 @@ def dashboard():
         'aguardando': OrdemServico.query.filter_by(status='Aguardando peça').count(),
         'concluidas': OrdemServico.query.filter_by(status='Concluída').count(),
         'total': OrdemServico.query.count(),
+        'faturamento': sum(float(o.valor.replace(',','.')) for o in OrdemServico.query.all() if o.valor and o.valor.replace(',','.').replace('.','',1).isdigit()),
     }
+    # Gráfico OS por mês (últimos 6 meses)
+    from datetime import datetime, timedelta
+    meses = []
+    os_por_mes = []
+    for i in range(5, -1, -1):
+        d = datetime.now().replace(day=1) - timedelta(days=i*28)
+        label = d.strftime('%b/%y')
+        count = OrdemServico.query.filter(
+            db.extract('month', OrdemServico.data_abertura) == d.month,
+            db.extract('year', OrdemServico.data_abertura) == d.year
+        ).count()
+        meses.append(label)
+        os_por_mes.append(count)
+    # Gráfico por status
+    status_labels = ['Aberta', 'Em análise', 'Aguardando peça', 'Concluída', 'Enviada para fabricante']
+    status_data = [OrdemServico.query.filter_by(status=s).count() for s in status_labels]
+    # Top equipamentos
+    from sqlalchemy import func
+    top_equip = db.session.query(OrdemServico.equipamento, func.count(OrdemServico.id).label('total'))        .group_by(OrdemServico.equipamento).order_by(func.count(OrdemServico.id).desc()).limit(5).all()
     return render_template('dashboard.html', ordens=ordens, estoque=estoque,
                            stats=stats, q=q, status_filter=status_filter,
-                           STATUS_COLORS=STATUS_COLORS)
+                           STATUS_COLORS=STATUS_COLORS,
+                           meses=meses, os_por_mes=os_por_mes,
+                           status_labels=status_labels, status_data=status_data,
+                           top_equip=top_equip)
 
 @app.route('/nova_os', methods=['GET', 'POST'])
 @login_required
