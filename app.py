@@ -323,12 +323,13 @@ def dashboard():
     # Top equipamentos
     from sqlalchemy import func
     top_equip = db.session.query(OrdemServico.equipamento, func.count(OrdemServico.id).label('total'))        .group_by(OrdemServico.equipamento).order_by(func.count(OrdemServico.id).desc()).limit(5).all()
+    usuarios = User.query.order_by(User.is_admin.desc(), User.nome_completo).all()
     return render_template('dashboard.html', ordens=ordens, estoque=estoque,
                            stats=stats, q=q, status_filter=status_filter,
                            STATUS_COLORS=STATUS_COLORS,
                            meses=meses, os_por_mes=os_por_mes,
                            status_labels=status_labels, status_data=status_data,
-                           top_equip=top_equip)
+                           top_equip=top_equip, usuarios=usuarios)
 
 @app.route('/nova_os', methods=['GET', 'POST'])
 @login_required
@@ -403,6 +404,33 @@ def add_estoque():
                    posicao=request.form.get('posicao'))
     db.session.add(novo)
     db.session.commit()
+    return redirect(url_for('dashboard'))
+
+@app.route('/estoque/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_estoque(id):
+    item = Estoque.query.get_or_404(id)
+    db.session.delete(item)
+    db.session.commit()
+    flash('Item removido do estoque.', 'success')
+    return redirect(url_for('dashboard'))
+
+@app.route('/usuarios/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_usuario(id):
+    if not (current_user.is_admin or current_user.is_gerente):
+        return redirect(url_for('dashboard'))
+    if id == current_user.id:
+        flash('Você não pode deletar seu próprio usuário.', 'error')
+        return redirect(url_for('dashboard'))
+    user = User.query.get_or_404(id)
+    # Gerente não pode deletar admin
+    if user.is_admin and not current_user.is_admin:
+        flash('Sem permissão para deletar administradores.', 'error')
+        return redirect(url_for('dashboard'))
+    db.session.delete(user)
+    db.session.commit()
+    flash(f'Usuário {user.nome_completo} removido.', 'success')
     return redirect(url_for('dashboard'))
 
 @app.route('/tabela_precos', methods=['GET', 'POST'])
