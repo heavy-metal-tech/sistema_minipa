@@ -24,6 +24,7 @@ class PecaOS(db.Model):
     descricao = db.Column(db.String(200))
     quantidade = db.Column(db.Integer, default=1)
     observacoes = db.Column(db.Text)
+    foto = db.Column(db.String(300))  # Caminho da foto da peça
 
 class OrdemServico(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -57,6 +58,7 @@ class OrdemServico(db.Model):
 
     # Defeito e Serviço
     defeito = db.Column(db.Text)
+    fotos_defeito = db.Column(db.Text)  # JSON com lista de caminhos das fotos
     tipo_servico = db.Column(db.String(100))
     valor = db.Column(db.String(20))
 
