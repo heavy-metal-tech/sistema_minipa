@@ -1,4 +1,5 @@
-import os, io, smtplib
+import os, io, smtplib, json, uuid
+from werkzeug.utils import secure_filename
 import psycopg2cffi_compat  # noqa
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -28,6 +29,16 @@ EMAIL_PASS = os.environ.get('EMAIL_PASS', '')
 EMAIL_MINIPA = os.environ.get('EMAIL_MINIPA', 'assistencia@minipa.com.br')
 
 db.init_app(app)
+
+# Jinja filter para JSON
+import json as _json
+@app.template_filter('from_json')
+def from_json_filter(value):
+    try:
+        return _json.loads(value) if value else []
+    except:
+        return []
+
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
