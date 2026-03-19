@@ -92,7 +92,22 @@
   <!-- Defeito -->
   <div class="card" style="margin-top:20px;">
     <div class="section-title">Defeito Informado pelo Cliente</div>
-    <p style="font-size:14px;line-height:1.6;color:#374151;">{{ os.defeito or 'Nenhum defeito informado.' }}</p>
+    <p style="font-size:14px;line-height:1.6;color:#374151;margin-bottom:{% if os.fotos_defeito %}16px{% else %}0{% endif %};">{{ os.defeito or 'Nenhum defeito informado.' }}</p>
+    {% if os.fotos_defeito %}
+      {% set fotos = os.fotos_defeito | from_json %}
+      {% if fotos %}
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;">
+        {% for foto in fotos %}
+        <a href="{{ url_for('static', filename=foto) }}" target="_blank">
+          <img src="{{ url_for('static', filename=foto) }}"
+               style="width:120px;height:90px;object-fit:cover;border-radius:8px;border:1.5px solid #dde3f0;cursor:pointer;transition:transform .15s;"
+               onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'"
+               title="Clique para ampliar">
+        </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endif %}
   </div>
 
   <!-- Peças -->
@@ -101,7 +116,7 @@
     {% if os.pecas %}
     <table>
       <thead>
-        <tr><th>Código</th><th>Descrição</th><th>Qtd</th><th>Observações</th></tr>
+        <tr><th>Código</th><th>Descrição</th><th>Qtd</th><th>Observações</th><th>Foto</th></tr>
       </thead>
       <tbody>
         {% for peca in os.pecas %}
@@ -110,6 +125,16 @@
           <td>{{ peca.descricao }}</td>
           <td>{{ peca.quantidade }}</td>
           <td style="color:#6b7280;">{{ peca.observacoes or '—' }}</td>
+          <td>
+            {% if peca.foto %}
+            <a href="{{ url_for('static', filename=peca.foto) }}" target="_blank">
+              <img src="{{ url_for('static', filename=peca.foto) }}"
+                   style="width:50px;height:38px;object-fit:cover;border-radius:5px;border:1px solid #dde3f0;cursor:pointer;">
+            </a>
+            {% else %}
+            <span style="color:#d1d5db;font-size:12px;">—</span>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
