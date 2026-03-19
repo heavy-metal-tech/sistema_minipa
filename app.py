@@ -493,6 +493,24 @@ def logout():
 
 with app.app_context():
     db.create_all()
+    # Migração automática — adiciona colunas novas se não existirem
+    from sqlalchemy import text
+    with db.engine.connect() as conn:
+        try:
+            conn.execute(text('ALTER TABLE ordem_servico ADD COLUMN fotos_defeito TEXT'))
+            conn.commit()
+        except Exception:
+            pass
+        try:
+            conn.execute(text('ALTER TABLE peca_os ADD COLUMN foto VARCHAR(300)'))
+            conn.commit()
+        except Exception:
+            pass
+        try:
+            conn.execute(text('ALTER TABLE "user" ADD COLUMN is_gerente BOOLEAN DEFAULT FALSE'))
+            conn.commit()
+        except Exception:
+            pass
     if not User.query.filter_by(username='will').first():
         db.session.add(User(username='will',
                             password=generate_password_hash('123', method='pbkdf2:sha256'),
