@@ -1,0 +1,423 @@
+{% extends 'base.html' %}
+{% block title %}Nova OS — Minipa OS{% endblock %}
+{% block extra_css %}
+<style>
+.toggle-pessoa { display:flex; gap:0; margin-bottom:18px; }
+.toggle-pessoa button {
+  flex:1; padding:9px; border:1.5px solid var(--border); background:#fff;
+  font-family:inherit; font-size:13px; font-weight:600; cursor:pointer;
+  transition:all .15s; color:#6b7280;
+}
+.toggle-pessoa button:first-child { border-radius:8px 0 0 8px; }
+.toggle-pessoa button:last-child { border-radius:0 8px 8px 0; border-left:none; }
+.toggle-pessoa button.active { background:var(--blue); color:#fff; border-color:var(--blue); }
+.pj-fields { display:none; }
+.pj-fields.show { display:block; }
+
+.peca-row { display:grid; grid-template-columns:120px 1fr 70px 1fr auto; gap:8px; align-items:end; margin-bottom:10px; }
+.btn-remove { background:#fef2f2; border:1.5px solid #fecaca; color:#b91c1c;
+              border-radius:6px; padding:6px 10px; cursor:pointer; font-size:18px;
+              line-height:1; font-weight:700; transition:background .15s; }
+.btn-remove:hover { background:#fee2e2; }
+#add-peca { background:none; border:1.5px dashed var(--border); color:var(--blue-mid);
+            border-radius:8px; padding:9px; width:100%; font-family:inherit;
+            font-size:13px; cursor:pointer; transition:border-color .15s, background .15s; }
+#add-peca:hover { border-color:var(--blue-mid); background:rgba(30,77,183,0.04); }
+
+.garantia-toggle { display:flex; gap:0; }
+.garantia-toggle button {
+  flex:1; padding:9px 14px; border:1.5px solid var(--border); background:#fff;
+  font-family:inherit; font-size:13px; font-weight:600; cursor:pointer;
+  transition:all .15s; color:#6b7280;
+}
+.garantia-toggle button:first-child { border-radius:8px 0 0 8px; }
+.garantia-toggle button:last-child { border-radius:0 8px 8px 0; border-left:none; }
+.garantia-toggle button.sim { }
+.garantia-toggle button.active-sim { background:#16a34a; color:#fff; border-color:#16a34a; }
+.garantia-toggle button.active-nao { background:#d42b2b; color:#fff; border-color:#d42b2b; }
+.upload-area {
+  border: 2px dashed #d0e3f5; border-radius: 10px; padding: 20px;
+  text-align: center; cursor: pointer; transition: all .2s;
+  background: #f8fbff;
+}
+.upload-area:hover { border-color: #0077c8; background: #e0f0ff; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>Nova Ordem de Serviço</h1>
+  <div class="topbar-actions">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline">← Voltar</a>
+  </div>
+</div>
+<div class="content">
+<form method="POST" id="os-form" enctype="multipart/form-data">
+  <input type="hidden" name="tipo_pessoa" id="tipo_pessoa_input" value="PF">
+  <input type="hidden" name="garantia" id="garantia_input" value="Não">
+
+  <!-- Status -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="section-title">Informações da OS</div>
+    <div class="form-row col-2">
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-control">
+          {% for s in ['Aberta','Em análise','Aguardando peça','Concluída','Enviada para fabricante'] %}
+            <option value="{{ s }}">{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data de Abertura</label>
+        <input type="datetime-local" name="data_abertura" class="form-control"
+               value="{{ now.strftime('%Y-%m-%dT%H:%M') if now else '' }}">
+      </div>
+    </div>
+  </div>
+
+  <!-- Cliente -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="section-title">Dados do Cliente / Empresa</div>
+
+    <div class="toggle-pessoa">
+      <button type="button" id="btn-pf" class="active" onclick="setPessoa('PF')">👤 Pessoa Física (CPF)</button>
+      <button type="button" id="btn-pj" onclick="setPessoa('PJ')">🏢 Pessoa Jurídica (CNPJ)</button>
+    </div>
+
+    <div class="form-row col-2">
+      <div class="form-group">
+        <label class="form-label" id="label-razao">Nome Completo</label>
+        <input class="form-control" name="cliente" id="input-cliente" placeholder="Nome ou Razão Social" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label" id="label-cpfcnpj">CPF</label>
+        <input class="form-control" name="cpf_cnpj" id="input-cpfcnpj" placeholder="000.000.000-00">
+      </div>
+    </div>
+
+    <!-- Campos exclusivos PJ -->
+    <div class="pj-fields" id="pj-block">
+      <div class="form-row col-2" style="margin-bottom:0;">
+        <div class="form-group">
+          <label class="form-label">Nome Fantasia</label>
+          <input class="form-control" name="nome_fantasia" placeholder="Nome Fantasia">
+        </div>
+        <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <label class="form-label">Inscrição Estadual</label>
+            <input class="form-control" name="inscricao_estadual" placeholder="IE">
+          </div>
+          <div>
+            <label class="form-label">Insc. Municipal</label>
+            <input class="form-control" name="inscricao_municipal" placeholder="IM">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-row col-2">
+      <div class="form-group">
+        <label class="form-label">Telefone</label>
+        <input class="form-control" name="telefone" placeholder="(11) 99999-9999">
+      </div>
+      <div class="form-group">
+        <label class="form-label">E-mail</label>
+        <input class="form-control" type="email" name="email" placeholder="contato@empresa.com">
+      </div>
+    </div>
+
+    <div class="form-row col-4" style="margin-bottom:0;">
+      <div class="form-group" style="grid-column:span 2;">
+        <label class="form-label">Endereço (Rua / Av.)</label>
+        <input class="form-control" name="endereco" placeholder="Rua das Flores" id="input-rua">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Número</label>
+        <input class="form-control" name="numero" placeholder="123">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Complemento</label>
+        <input class="form-control" name="complemento" placeholder="Sala 2">
+      </div>
+    </div>
+    <div class="form-row col-4">
+      <div class="form-group">
+        <label class="form-label">CEP</label>
+        <input class="form-control" name="cep" placeholder="00000-000" id="input-cep" onblur="buscarCep(this.value)">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Bairro</label>
+        <input class="form-control" name="bairro" placeholder="Centro" id="input-bairro">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cidade</label>
+        <input class="form-control" name="cidade" placeholder="São Paulo" id="input-cidade">
+      </div>
+      <div class="form-group">
+        <label class="form-label">UF</label>
+        <select name="estado" class="form-control" id="input-estado">
+          <option value="">—</option>
+          {% for uf in ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'] %}
+            <option value="{{ uf }}">{{ uf }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Equipamento -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="section-title">Dados do Equipamento</div>
+    <div class="form-row col-3">
+      <div class="form-group">
+        <label class="form-label">Marca</label>
+        <input class="form-control" name="marca" placeholder="Ex: Minipa" value="Minipa">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Modelo do Equipamento *</label>
+        <input class="form-control" name="equipamento" placeholder="Ex: ET-2042E" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Número de Série *</label>
+        <input class="form-control" name="serie" placeholder="S/N" required>
+      </div>
+    </div>
+    <div class="form-row col-3">
+      <div class="form-group">
+        <label class="form-label">Nota Fiscal</label>
+        <input class="form-control" name="nota_fiscal" placeholder="Nº da NF">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data da NF</label>
+        <input class="form-control" type="date" name="data_nf">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Em Garantia?</label>
+        <div class="garantia-toggle">
+          <button type="button" id="btn-sim" onclick="setGarantia('Sim')">✔ Sim</button>
+          <button type="button" id="btn-nao" class="active-nao" onclick="setGarantia('Não')">✘ Não</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Defeito -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="section-title">Defeito Informado pelo Cliente</div>
+    <div class="form-group">
+      <textarea class="form-control" name="defeito" rows="4"
+        placeholder="Descreva o defeito apresentado pelo equipamento. Ex: Não liga, medição incorreta, display não funciona..."></textarea>
+    </div>
+    <div class="form-group" style="margin-bottom:0;">
+      <label class="form-label">Fotos do Defeito (opcional — múltiplas fotos)</label>
+      <div class="upload-area" id="upload-defeito" onclick="document.getElementById('input-fotos-defeito').click()">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0077c8" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>
+        <div style="font-size:13px;font-weight:600;color:#0077c8;margin-top:8px;">Clique para adicionar fotos</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:4px;">JPG, PNG ou GIF — máximo 16MB por foto</div>
+      </div>
+      <input type="file" id="input-fotos-defeito" name="fotos_defeito[]" multiple accept="image/*" style="display:none" onchange="previewFotos(this, 'preview-defeito')">
+      <div id="preview-defeito" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;"></div>
+      <div id="fotos-defeito-lista" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- Peças -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="section-title">Solicitação de Peças</div>
+    <div style="display:grid;grid-template-columns:120px 1fr 70px 1fr 36px;gap:8px;margin-bottom:8px;">
+      <span style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;">Código</span>
+      <span style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;">Descrição</span>
+      <span style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;">Qtd</span>
+      <span style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;">Observações</span>
+      <span></span>
+    </div>
+    <div id="pecas-container"></div>
+    <button type="button" id="add-peca" onclick="addPeca()">+ Adicionar Peça</button>
+  </div>
+
+  <!-- Serviço e Valor -->
+  <div class="card" style="margin-bottom:24px;">
+    <div class="section-title">Serviço e Valor</div>
+    <div class="form-row col-2">
+      <div class="form-group">
+        <label class="form-label">Tipo de Serviço</label>
+        <select name="tipo_servico" class="form-control" id="tipo_servico" onchange="preencherValor()">
+          <option value="">— Selecione —</option>
+          {% for t in tabela %}
+            <option value="{{ t.tipo_servico }}" data-valor="{{ '%.2f'|format(t.valor) }}">
+              {{ t.tipo_servico }} — R$ {{ '%.2f'|format(t.valor) }}
+            </option>
+          {% endfor %}
+          <option value="outro">Outro (manual)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Valor Estimado (R$)</label>
+        <input class="form-control" name="valor" id="valor_field" placeholder="0,00">
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:12px;justify-content:flex-end;">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline">Cancelar</a>
+    <button type="submit" class="btn btn-primary" style="padding:12px 32px;">
+      ✔ Gerar Ordem de Serviço
+    </button>
+  </div>
+</form>
+</div>
+
+<script>
+// Tipo de pessoa
+function setPessoa(tipo) {
+  document.getElementById('tipo_pessoa_input').value = tipo;
+  document.getElementById('btn-pf').classList.toggle('active', tipo === 'PF');
+  document.getElementById('btn-pj').classList.toggle('active', tipo === 'PJ');
+  document.getElementById('pj-block').classList.toggle('show', tipo === 'PJ');
+  document.getElementById('label-razao').textContent = tipo === 'PJ' ? 'Razão Social' : 'Nome Completo';
+  document.getElementById('label-cpfcnpj').textContent = tipo === 'PJ' ? 'CNPJ' : 'CPF';
+  document.getElementById('input-cpfcnpj').placeholder = tipo === 'PJ' ? '00.000.000/0001-00' : '000.000.000-00';
+}
+
+// Garantia
+function setGarantia(val) {
+  document.getElementById('garantia_input').value = val;
+  document.getElementById('btn-sim').className = val === 'Sim' ? 'active-sim' : '';
+  document.getElementById('btn-nao').className = val === 'Não' ? 'active-nao' : '';
+}
+
+// Valor automático
+function preencherValor() {
+  const sel = document.getElementById('tipo_servico');
+  const opt = sel.options[sel.selectedIndex];
+  const v = opt.dataset.valor;
+  if (v) document.getElementById('valor_field').value = v.replace('.', ',');
+}
+
+// Peças
+let pecaCount = 0;
+function addPeca() {
+  const c = document.getElementById('pecas-container');
+  const div = document.createElement('div');
+  div.className = 'peca-row';
+  div.style.gridTemplateColumns = '110px 1fr 60px 1fr 90px auto';
+  div.id = 'peca-' + pecaCount;
+  const pc = pecaCount;
+  div.innerHTML = `
+    <input class="form-control" name="peca_codigo[]" placeholder="Código">
+    <input class="form-control" name="peca_descricao[]" placeholder="Descrição da peça" required>
+    <input class="form-control" name="peca_quantidade[]" type="number" value="1" min="1">
+    <input class="form-control" name="peca_obs[]" placeholder="Observações">
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;background:#e0f0ff;border:1px dashed #0077c8;border-radius:6px;padding:5px 8px;font-size:11px;color:#0077c8;font-weight:600;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>
+        Foto
+        <input type="file" name="peca_foto[]" accept="image/*" style="display:none" onchange="previewPecaFoto(this, 'peca-prev-${pc}')">
+      </label>
+      <div id="peca-prev-${pc}"></div>
+    </div>
+    <button type="button" class="btn-remove" onclick="removePeca('peca-${pc}')">×</button>
+  `;
+  c.appendChild(div);
+  pecaCount++;
+}
+
+function previewPecaFoto(input, previewId) {
+  const prev = document.getElementById(previewId);
+  if (!prev) return;
+  prev.innerHTML = '';
+  if (input.files && input.files[0]) {
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(input.files[0]);
+    img.style.cssText = 'width:60px;height:45px;object-fit:cover;border-radius:4px;border:1px solid #dde3f0;';
+    prev.appendChild(img);
+  }
+}
+
+// Armazena todos os arquivos selecionados acumulando
+let fotosDefeitoAcumuladas = [];
+
+function previewFotos(input, previewId) {
+  const prev = document.getElementById(previewId);
+
+  // Acumula os novos arquivos
+  Array.from(input.files).forEach(file => {
+    fotosDefeitoAcumuladas.push(file);
+  });
+
+  // Reseta o input para permitir selecionar de novo
+  input.value = '';
+
+  // Recria o preview com todos os arquivos acumulados
+  prev.innerHTML = '';
+  fotosDefeitoAcumuladas.forEach((file, idx) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;';
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(file);
+    img.style.cssText = 'width:90px;height:70px;object-fit:cover;border-radius:8px;border:1.5px solid #dde3f0;cursor:pointer;';
+    // Botão remover
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.innerHTML = '×';
+    del.style.cssText = 'position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#d42b2b;color:#fff;border:none;cursor:pointer;font-size:13px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;';
+    del.onclick = () => {
+      fotosDefeitoAcumuladas.splice(idx, 1);
+      previewFotos({files:[]}, previewId);
+    };
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:10px;color:#6b7280;text-align:center;margin-top:3px;max-width:90px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
+    label.textContent = file.name;
+    wrap.appendChild(img);
+    wrap.appendChild(del);
+    wrap.appendChild(label);
+    prev.appendChild(wrap);
+  });
+
+  // Sincroniza os arquivos no input via DataTransfer
+  syncFilesInput();
+}
+
+function syncFilesInput() {
+  const input = document.getElementById('input-fotos-defeito');
+  const dt = new DataTransfer();
+  fotosDefeitoAcumuladas.forEach(f => dt.items.add(f));
+  input.files = dt.files;
+}
+function removePeca(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+// Busca CEP
+function limparEndereco() {
+  document.getElementById('input-rua').value = '';
+  document.getElementById('input-bairro').value = '';
+  document.getElementById('input-cidade').value = '';
+  document.getElementById('input-estado').value = '';
+}
+
+async function buscarCep(cep) {
+  const cepLimpo = cep.replace(/\D/g,'');
+  if (cepLimpo.length === 0) { limparEndereco(); return; }
+  if (cepLimpo.length !== 8) return;
+  try {
+    const r = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+    const d = await r.json();
+    if (!d.erro) {
+      document.getElementById('input-rua').value = d.logradouro || '';
+      document.getElementById('input-bairro').value = d.bairro || '';
+      document.getElementById('input-cidade').value = d.localidade || '';
+      document.getElementById('input-estado').value = d.uf || '';
+    } else {
+      limparEndereco();
+    }
+  } catch(e) { limparEndereco(); }
+}
+
+// Limpa endereço em tempo real ao apagar o CEP
+document.getElementById('input-cep').addEventListener('input', function() {
+  if (this.value.replace(/\D/g,'').length === 0) limparEndereco();
+});
+</script>
+{% endblock %}
