@@ -5,6 +5,8 @@ try:
     compat.register()
 except ImportError:
     pass
+import cloudinary
+import cloudinary.uploader
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
@@ -17,7 +19,7 @@ from reportlab.lib import colors
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
-from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS
+from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'minipa_top_secret_2026'
@@ -303,6 +305,9 @@ def dashboard():
     q = request.args.get('q', '')
     status_filter = request.args.get('status', '')
     query = OrdemServico.query
+    # Multi-filial: admin/gerente sem filial vê tudo, outros só veem sua filial
+    if not current_user.is_admin and current_user.filial_id:
+        query = query.filter_by(filial_id=current_user.filial_id)
     if q:
         query = query.filter(
             OrdemServico.cliente.ilike(f'%{q}%') |
@@ -397,6 +402,52 @@ def nova_os():
         return redirect(url_for('ver_os', id=nova.id))
     return render_template('nova_os.html', tabela=tabela)
 
+@app.route('/os/<int:id>/editar', methods=['GET', 'POST'])
+@login_required
+def editar_os(id):
+    os_data = OrdemServico.query.get_or_404(id)
+    tabela = TabelaPreco.query.all()
+    if request.method == 'POST':
+        os_data.status = request.form.get('status', os_data.status)
+        os_data.tipo_pessoa = request.form.get('tipo_pessoa', os_data.tipo_pessoa)
+        os_data.cliente = request.form.get('cliente', os_data.cliente)
+        os_data.cpf_cnpj = request.form.get('cpf_cnpj', os_data.cpf_cnpj)
+        os_data.nome_fantasia = request.form.get('nome_fantasia', os_data.nome_fantasia)
+        os_data.inscricao_estadual = request.form.get('inscricao_estadual', os_data.inscricao_estadual)
+        os_data.inscricao_municipal = request.form.get('inscricao_municipal', os_data.inscricao_municipal)
+        os_data.telefone = request.form.get('telefone', os_data.telefone)
+        os_data.email = request.form.get('email', os_data.email)
+        os_data.endereco = request.form.get('endereco', os_data.endereco)
+        os_data.numero = request.form.get('numero', os_data.numero)
+        os_data.complemento = request.form.get('complemento', os_data.complemento)
+        os_data.bairro = request.form.get('bairro', os_data.bairro)
+        os_data.cidade = request.form.get('cidade', os_data.cidade)
+        os_data.estado = request.form.get('estado', os_data.estado)
+        os_data.cep = request.form.get('cep', os_data.cep)
+        os_data.marca = request.form.get('marca', os_data.marca)
+        os_data.equipamento = request.form.get('equipamento', os_data.equipamento)
+        os_data.serie = request.form.get('serie', os_data.serie)
+        os_data.nota_fiscal = request.form.get('nota_fiscal', os_data.nota_fiscal)
+        os_data.data_nf = request.form.get('data_nf', os_data.data_nf)
+        os_data.garantia = request.form.get('garantia', os_data.garantia)
+        os_data.defeito = request.form.get('defeito', os_data.defeito)
+        os_data.tipo_servico = request.form.get('tipo_servico', os_data.tipo_servico)
+        os_data.valor = request.form.get('valor', os_data.valor)
+        # Novas fotos do defeito
+        novas_fotos = []
+        for foto in request.files.getlist('fotos_defeito[]'):
+            caminho = salvar_foto(foto)
+            if caminho:
+                novas_fotos.append(caminho)
+        if novas_fotos:
+            fotos_existentes = json.loads(os_data.fotos_defeito or '[]')
+            fotos_existentes.extend(novas_fotos)
+            os_data.fotos_defeito = json.dumps(fotos_existentes)
+        db.session.commit()
+        flash('OS atualizada com sucesso!', 'success')
+        return redirect(url_for('ver_os', id=id))
+    return render_template('editar_os.html', os=os_data, tabela=tabela, STATUS_COLORS=STATUS_COLORS)
+
 @app.route('/os/<int:id>')
 @login_required
 def ver_os(id):
@@ -484,6 +535,34 @@ def novo_tecnico():
         flash(f'Usuário {u.nome_completo} cadastrado com sucesso!', 'success')
     return redirect(url_for('dashboard'))
 
+@app.route('/filiais', methods=['GET', 'POST'])
+@login_required
+def filiais():
+    if not current_user.is_admin:
+        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'add':
+            f = Filial(nome=request.form.get('nome'),
+                       cidade=request.form.get('cidade'),
+                       estado=request.form.get('estado'))
+            db.session.add(f)
+            flash('Filial cadastrada!', 'success')
+        elif action == 'delete':
+            f = Filial.query.get(int(request.form.get('id')))
+            if f: db.session.delete(f)
+            flash('Filial removida!', 'success')
+        elif action == 'vincular':
+            user = User.query.get(int(request.form.get('user_id')))
+            filial_id = request.form.get('filial_id')
+            if user:
+                user.filial_id = int(filial_id) if filial_id else None
+            flash('Usuário vinculado!', 'success')
+        db.session.commit()
+    lista = Filial.query.all()
+    usuarios = User.query.all()
+    return render_template('filiais.html', filiais=lista, usuarios=usuarios)
+
 @app.route('/logout')
 def logout():
     logout_user()
@@ -496,21 +575,18 @@ with app.app_context():
     # Migração automática — adiciona colunas novas se não existirem
     from sqlalchemy import text
     with db.engine.connect() as conn:
-        try:
-            conn.execute(text('ALTER TABLE ordem_servico ADD COLUMN fotos_defeito TEXT'))
-            conn.commit()
-        except Exception:
-            pass
-        try:
-            conn.execute(text('ALTER TABLE peca_os ADD COLUMN foto VARCHAR(300)'))
-            conn.commit()
-        except Exception:
-            pass
-        try:
-            conn.execute(text('ALTER TABLE "user" ADD COLUMN is_gerente BOOLEAN DEFAULT FALSE'))
-            conn.commit()
-        except Exception:
-            pass
+        for sql in [
+            'ALTER TABLE ordem_servico ADD COLUMN fotos_defeito TEXT',
+            'ALTER TABLE peca_os ADD COLUMN foto VARCHAR(300)',
+            'ALTER TABLE "user" ADD COLUMN is_gerente BOOLEAN DEFAULT FALSE',
+            'ALTER TABLE "user" ADD COLUMN filial_id INTEGER',
+            'ALTER TABLE ordem_servico ADD COLUMN filial_id INTEGER',
+        ]:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass
     if not User.query.filter_by(username='will').first():
         db.session.add(User(username='will',
                             password=generate_password_hash('123', method='pbkdf2:sha256'),
