@@ -5,3 +5,4 @@ Werkzeug==3.0.1
 reportlab==4.1.0
 gunicorn==21.2.0
 psycopg2cffi==2.9.0
+cloudinary==1.36.0
