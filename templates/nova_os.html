@@ -217,6 +217,7 @@
       </div>
       <input type="file" id="input-fotos-defeito" name="fotos_defeito[]" multiple accept="image/*" style="display:none" onchange="previewFotos(this, 'preview-defeito')">
       <div id="preview-defeito" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;"></div>
+      <div id="fotos-defeito-lista" style="display:none"></div>
     </div>
   </div>
 
@@ -333,23 +334,55 @@ function previewPecaFoto(input, previewId) {
   }
 }
 
-function previewFotos(input, previewId) {
-  const prev = document.getElementById(previewId);
+// Acumula fotos como objetos File em array global
+let fotosDefeitoAcumuladas = [];
+
+function renderPreviewDefeito() {
+  const prev = document.getElementById('preview-defeito');
   prev.innerHTML = '';
-  Array.from(input.files).forEach(file => {
+  fotosDefeitoAcumuladas.forEach((file, idx) => {
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'position:relative;';
+    wrap.style.cssText = 'position:relative;display:inline-block;';
     const img = document.createElement('img');
     img.src = URL.createObjectURL(file);
-    img.style.cssText = 'width:90px;height:70px;object-fit:cover;border-radius:8px;border:1.5px solid #dde3f0;';
+    img.style.cssText = 'width:90px;height:70px;object-fit:cover;border-radius:8px;border:1.5px solid #dde3f0;display:block;';
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.innerHTML = '×';
+    del.style.cssText = 'position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#d42b2b;color:#fff;border:none;cursor:pointer;font-size:13px;font-weight:700;line-height:20px;text-align:center;padding:0;';
+    del.onclick = () => {
+      fotosDefeitoAcumuladas.splice(idx, 1);
+      renderPreviewDefeito();
+    };
     const label = document.createElement('div');
     label.style.cssText = 'font-size:10px;color:#6b7280;text-align:center;margin-top:3px;max-width:90px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
     label.textContent = file.name;
     wrap.appendChild(img);
+    wrap.appendChild(del);
     wrap.appendChild(label);
     prev.appendChild(wrap);
   });
 }
+
+function previewFotos(input, previewId) {
+  // Adiciona cada arquivo novo ao array acumulado
+  Array.from(input.files).forEach(file => {
+    fotosDefeitoAcumuladas.push(file);
+  });
+  // Reseta o input para poder selecionar de novo
+  input.value = '';
+  renderPreviewDefeito();
+}
+
+// Antes de submeter o form, popula um input hidden com os arquivos
+document.getElementById('os-form').addEventListener('submit', function() {
+  const input = document.getElementById('input-fotos-defeito');
+  try {
+    const dt = new DataTransfer();
+    fotosDefeitoAcumuladas.forEach(f => dt.items.add(f));
+    input.files = dt.files;
+  } catch(e) {}
+});
 function removePeca(id) {
   const el = document.getElementById(id);
   if (el) el.remove();
