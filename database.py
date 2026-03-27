@@ -4,6 +4,13 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
+class Filial(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(150), nullable=False)
+    cidade = db.Column(db.String(100))
+    estado = db.Column(db.String(2))
+    ativa = db.Column(db.Boolean, default=True)
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -11,6 +18,8 @@ class User(UserMixin, db.Model):
     nome_completo = db.Column(db.String(100))
     is_admin = db.Column(db.Boolean, default=False)
     is_gerente = db.Column(db.Boolean, default=False)
+    filial_id = db.Column(db.Integer, db.ForeignKey('filial.id'), nullable=True)
+    filial = db.relationship('Filial', backref='usuarios')
 
 class TabelaPreco(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -63,6 +72,8 @@ class OrdemServico(db.Model):
     valor = db.Column(db.String(20))
 
     tecnico = db.Column(db.String(100))
+    filial_id = db.Column(db.Integer, db.ForeignKey('filial.id'), nullable=True)
+    filial = db.relationship('Filial', backref='ordens')
     pecas = db.relationship('PecaOS', backref='ordem', lazy=True, cascade='all, delete-orphan')
 
 class Estoque(db.Model):
