@@ -586,22 +586,19 @@ with app.app_context():
     # Primeiro cria todas as tabelas novas (incluindo filial)
     db.create_all()
     # Depois adiciona colunas que podem não existir
-    try:
-        with db.engine.connect() as conn:
-            for sql in [
-                'ALTER TABLE ordem_servico ADD COLUMN fotos_defeito TEXT',
-                'ALTER TABLE peca_os ADD COLUMN foto VARCHAR(300)',
-                'ALTER TABLE "user" ADD COLUMN is_gerente BOOLEAN DEFAULT FALSE',
-                'ALTER TABLE "user" ADD COLUMN filial_id INTEGER',
-                'ALTER TABLE ordem_servico ADD COLUMN filial_id INTEGER',
-            ]:
-                try:
-                    conn.execute(text(sql))
-                    conn.commit()
-                except Exception:
-                    pass
-    except Exception:
-        pass
+    for sql in [
+        'ALTER TABLE ordem_servico ADD COLUMN IF NOT EXISTS fotos_defeito TEXT',
+        'ALTER TABLE peca_os ADD COLUMN IF NOT EXISTS foto VARCHAR(300)',
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_gerente BOOLEAN DEFAULT FALSE',
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS filial_id INTEGER',
+        'ALTER TABLE ordem_servico ADD COLUMN IF NOT EXISTS filial_id INTEGER',
+    ]:
+        try:
+            with db.engine.connect() as conn:
+                conn.execute(text(sql))
+                conn.commit()
+        except Exception:
+            pass
     if not User.query.filter_by(username='will').first():
         db.session.add(User(username='will',
                             password=generate_password_hash('123', method='pbkdf2:sha256'),
