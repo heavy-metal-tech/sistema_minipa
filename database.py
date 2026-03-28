@@ -20,6 +20,7 @@ class User(UserMixin, db.Model):
     is_gerente = db.Column(db.Boolean, default=False)
     filial_id = db.Column(db.Integer, db.ForeignKey('filial.id'), nullable=True)
     filial = db.relationship('Filial', backref='usuarios')
+    must_change_password = db.Column(db.Boolean, default=False)
 
 class TabelaPreco(db.Model):
     id = db.Column(db.Integer, primary_key=True)

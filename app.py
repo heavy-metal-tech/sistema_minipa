@@ -1,6 +1,8 @@
-import os, io, smtplib, json
+import os, io, smtplib, json, secrets
 import cloudinary
 import cloudinary.uploader
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
@@ -16,7 +18,11 @@ from datetime import datetime
 from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'minipa_top_secret_2026'
+_secret = os.environ.get('SECRET_KEY')
+if not _secret:
+    _secret = secrets.token_hex(32)
+    print('WARNING: SECRET_KEY not set. Sessions will reset on restart. Set SECRET_KEY env var.')
+app.config['SECRET_KEY'] = _secret
 
 _db_url = os.environ.get('DATABASE_URL', 'sqlite:///instance/minipa_v3.db')
 # Render provides postgres:// but SQLAlchemy requires postgresql://
@@ -34,6 +40,8 @@ EMAIL_MINIPA = os.environ.get('EMAIL_MINIPA', 'assistencia@minipa.com.br')
 
 db.init_app(app)
 
+limiter = Limiter(get_remote_address, app=app, storage_uri="memory://", default_limits=[])
+
 # Jinja filter para JSON
 import json as _json
 @app.template_filter('from_json')
@@ -49,6 +57,17 @@ login_manager.login_view = 'login'
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+@app.before_request
+def check_must_change_password():
+    if current_user.is_authenticated and getattr(current_user, 'must_change_password', False):
+        if request.endpoint not in ('trocar_senha', 'logout', 'static'):
+            return redirect(url_for('trocar_senha'))
+
+@app.errorhandler(429)
+def rate_limit_exceeded(e):
+    flash('Muitas tentativas. Aguarde 1 minuto e tente novamente.', 'error')
+    return render_template('login.html'), 429
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -300,14 +319,38 @@ def api_tabela_precos():
 # ── Navegação ─────────────────────────────────────────────────────────────────
 
 @app.route('/', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
 def login():
     if request.method == 'POST':
-        user = User.query.filter_by(username=request.form.get('username', '').lower()).first()
-        if user and check_password_hash(user.password, request.form.get('password', '')):
+        username = request.form.get('username', '').strip()[:50].lower()
+        password = request.form.get('password', '')[:200]
+        if not username or not password:
+            flash('Preencha usuário e senha.', 'error')
+            return render_template('login.html')
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
             login_user(user)
             return redirect(url_for('dashboard'))
         flash('Usuário ou senha inválidos.', 'error')
     return render_template('login.html')
+
+@app.route('/trocar_senha', methods=['GET', 'POST'])
+@login_required
+def trocar_senha():
+    if request.method == 'POST':
+        nova = request.form.get('nova_senha', '')
+        confirma = request.form.get('confirma_senha', '')
+        if len(nova) < 6:
+            flash('A senha deve ter pelo menos 6 caracteres.', 'error')
+        elif nova != confirma:
+            flash('As senhas não coincidem.', 'error')
+        else:
+            current_user.password = generate_password_hash(nova)
+            current_user.must_change_password = False
+            db.session.commit()
+            flash('Senha alterada com sucesso!', 'success')
+            return redirect(url_for('dashboard'))
+    return render_template('trocar_senha.html')
 
 @app.route('/dashboard')
 @login_required
@@ -592,6 +635,7 @@ with app.app_context():
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_gerente BOOLEAN DEFAULT FALSE',
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS filial_id INTEGER',
         'ALTER TABLE ordem_servico ADD COLUMN IF NOT EXISTS filial_id INTEGER',
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE',
     ]:
         try:
             with db.engine.connect() as conn:
@@ -602,7 +646,8 @@ with app.app_context():
     if not User.query.filter_by(username='will').first():
         db.session.add(User(username='will',
                             password=generate_password_hash('123', method='pbkdf2:sha256'),
-                            nome_completo='Will Admin', is_admin=True))
+                            nome_completo='Will Admin', is_admin=True,
+                            must_change_password=True))
         db.session.commit()
     if TabelaPreco.query.count() == 0:
         for tipo, valor in [('Reparo com PCI', 180.00), ('Reparo Geral', 120.00),

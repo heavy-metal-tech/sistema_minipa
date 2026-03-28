@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trocar Senha — Minipa OS</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --blue: #0077c8; --blue-dark: #005fa3; --border: #d0e3f5; --light: #eef4fb; }
+  body { font-family: 'DM Sans', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--light); }
+  .card { background: #fff; border-radius: 14px; border: 1px solid var(--border); padding: 40px; width: 100%; max-width: 400px; box-shadow: 0 4px 24px rgba(0,119,200,0.08); }
+  .card h1 { font-size: 20px; font-weight: 700; color: #111; margin-bottom: 6px; }
+  .card p { color: #6b7280; font-size: 13.5px; margin-bottom: 28px; }
+  label { display: block; font-size: 11px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  input { width: 100%; padding: 11px 13px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit; outline: none; transition: border-color .2s; }
+  input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0,119,200,0.1); }
+  .field { margin-bottom: 16px; }
+  .btn { width: 100%; padding: 12px; background: var(--blue); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; margin-top: 8px; transition: background .2s; }
+  .btn:hover { background: var(--blue-dark); }
+  .alert-error { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; }
+  .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; }
+  .icon { font-size: 32px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">🔒</div>
+  <h1>Troque sua senha</h1>
+  <p>Por segurança, defina uma nova senha antes de continuar.</p>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="alert-{{ 'error' if cat == 'error' else 'success' }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+  <form method="POST">
+    <div class="field">
+      <label>Nova Senha</label>
+      <input type="password" name="nova_senha" placeholder="Mínimo 6 caracteres" required minlength="6">
+    </div>
+    <div class="field">
+      <label>Confirmar Senha</label>
+      <input type="password" name="confirma_senha" placeholder="Repita a nova senha" required minlength="6">
+    </div>
+    <button class="btn" type="submit">SALVAR NOVA SENHA</button>
+  </form>
+</div>
+</body>
+</html>
