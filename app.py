@@ -649,6 +649,11 @@ with app.app_context():
                             nome_completo='Will Admin', is_admin=True,
                             must_change_password=True))
         db.session.commit()
+    # Force must_change_password for any user still using default password '123'
+    for u in User.query.all():
+        if check_password_hash(u.password, '123') and not u.must_change_password:
+            u.must_change_password = True
+    db.session.commit()
     if TabelaPreco.query.count() == 0:
         for tipo, valor in [('Reparo com PCI', 180.00), ('Reparo Geral', 120.00),
                             ('Calibração', 90.00), ('Diagnóstico', 60.00)]:
