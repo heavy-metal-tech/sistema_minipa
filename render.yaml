@@ -3,4 +3,4 @@ services:
     name: sistema-minipa
     runtime: python  # Esta linha é essencial!
     buildCommand: pip install -r requirements.txt
-    startCommand: python setup_db.py && gunicorn app:app
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT

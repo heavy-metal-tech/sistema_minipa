@@ -1,10 +1,4 @@
-import os, io, smtplib, json, uuid
-from werkzeug.utils import secure_filename
-try:
-    from psycopg2cffi import compat
-    compat.register()
-except ImportError:
-    pass
+import os, io, smtplib, json
 import cloudinary
 import cloudinary.uploader
 from email.mime.multipart import MIMEMultipart
@@ -24,7 +18,11 @@ from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filia
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'minipa_top_secret_2026'
 
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///instance/minipa_v3.db')
+_db_url = os.environ.get('DATABASE_URL', 'sqlite:///instance/minipa_v3.db')
+# Render provides postgres:// but SQLAlchemy requires postgresql://
+if _db_url.startswith('postgres://'):
+    _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # E-mail config (edite conforme seu servidor SMTP)
@@ -53,6 +51,19 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+def salvar_foto(foto):
+    """Upload photo to Cloudinary if credentials are set, otherwise skip."""
+    if not foto or not foto.filename:
+        return None
+    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME')
+    api_key = os.environ.get('CLOUDINARY_API_KEY')
+    api_secret = os.environ.get('CLOUDINARY_API_SECRET')
+    if not (cloud_name and api_key and api_secret):
+        return None
+    cloudinary.config(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
+    result = cloudinary.uploader.upload(foto, folder='minipa_os')
+    return result.get('secure_url')
 
 STATUS_COLORS = {
     'Aberta': '#2563eb',
