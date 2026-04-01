@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% block title %}Autorizadas — Minipa OS{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>Gerenciamento de Autorizadas</h1>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-outline">← Voltar</a>
+</div>
+<div class="content">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
+
+    <!-- Lista de autorizadas -->
+    <div class="card">
+      <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Autorizadas Cadastradas</h2>
+      <table>
+        <thead><tr><th>Nome</th><th>Cidade/UF</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for f in filiais %}
+          <tr>
+            <td><strong>{{ f.nome }}</strong></td>
+            <td style="color:#6b7280;">{{ f.cidade or '—' }}/{{ f.estado or '—' }}</td>
+            <td>
+              {% if f.ativa %}
+                <span class="badge" style="background:#f0fdf4;color:#16a34a;">Ativa</span>
+              {% else %}
+                <span class="badge" style="background:#fef2f2;color:#d42b2b;">Inativa</span>
+              {% endif %}
+            </td>
+            <td>
+              <form method="POST" style="display:inline;">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="id" value="{{ f.id }}">
+                <button type="submit" onclick="return confirm('Remover autorizada {{ f.nome }}?')"
+                  style="background:none;border:none;cursor:pointer;color:#d42b2b;font-size:16px;">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" style="text-align:center;color:#9ca3af;padding:20px;">Nenhuma autorizada cadastrada.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <!-- Adicionar autorizada -->
+      <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:12px;">Nova Autorizada</div>
+        <form method="POST">
+          <input type="hidden" name="action" value="add">
+          <div class="form-group">
+            <label class="form-label">Nome da Autorizada</label>
+            <input class="form-control" name="nome" placeholder="Ex: Minipa SP Centro" required>
+          </div>
+          <div class="form-row col-2">
+            <div class="form-group">
+              <label class="form-label">Cidade</label>
+              <input class="form-control" name="cidade" placeholder="São Paulo">
+            </div>
+            <div class="form-group">
+              <label class="form-label">UF</label>
+              <select name="estado" class="form-control">
+                <option value="">—</option>
+                {% for uf in ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'] %}
+                  <option value="{{ uf }}">{{ uf }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Cadastrar Autorizada</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Vincular usuário a autorizada -->
+    <div class="card">
+      <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Vincular Usuário à Autorizada</h2>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.5;">
+        Cada técnico deve ser vinculado a uma autorizada. Ele só poderá ver as OS da sua autorizada.
+        Admins sem autorizada veem tudo.
+      </p>
+      <form method="POST">
+        <input type="hidden" name="action" value="vincular">
+        <div class="form-group">
+          <label class="form-label">Usuário</label>
+          <select name="user_id" class="form-control" required>
+            <option value="">— Selecione —</option>
+            {% for u in usuarios %}
+              <option value="{{ u.id }}">
+                {{ u.nome_completo }} ({{ u.username }})
+                {% if u.filial %}— {{ u.filial.nome }}{% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Autorizada</label>
+          <select name="filial_id" class="form-control">
+            <option value="">— Sem autorizada (vê tudo) —</option>
+            {% for f in filiais %}
+              <option value="{{ f.id }}">{{ f.nome }} — {{ f.cidade }}/{{ f.estado }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-blue" style="width:100%;">Vincular</button>
+      </form>
+
+      <!-- Tabela de vínculos atuais -->
+      <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:12px;">Vínculos Atuais</div>
+        <table>
+          <thead><tr><th>Usuário</th><th>Nível</th><th>Autorizada</th></tr></thead>
+          <tbody>
+            {% for u in usuarios %}
+            <tr>
+              <td>{{ u.nome_completo }}</td>
+              <td>
+                {% if u.is_admin %}<span class="badge" style="background:#fef3c7;color:#92400e;">Admin</span>
+                {% elif u.is_gerente %}<span class="badge" style="background:#ede9fe;color:#5b21b6;">Gerente</span>
+                {% else %}<span class="badge" style="background:#e0f0ff;color:#0077c8;">Técnico</span>{% endif %}
+              </td>
+              <td style="color:#6b7280;">{{ u.filial.nome if u.filial else '— todas —' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -181,9 +181,9 @@ textarea.form-control { resize: vertical; min-height: 90px; }
     </a>
     {% endif %}
     {% if current_user.is_admin %}
-    <a href="{{ url_for('filiais') }}" class="{{ 'active' if request.endpoint == 'filiais' }}">
+    <a href="{{ url_for('autorizadas') }}" class="{{ 'active' if request.endpoint == 'autorizadas' }}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
-      Filiais
+      Autorizadas
     </a>
     {% endif %}
   </nav>

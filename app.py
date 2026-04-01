@@ -589,9 +589,9 @@ def novo_tecnico():
         flash(f'Usuário {u.nome_completo} cadastrado com sucesso!', 'success')
     return redirect(url_for('dashboard'))
 
-@app.route('/filiais', methods=['GET', 'POST'])
+@app.route('/autorizadas', methods=['GET', 'POST'])
 @login_required
-def filiais():
+def autorizadas():
     if not current_user.is_admin:
         return redirect(url_for('dashboard'))
     if request.method == 'POST':
@@ -615,7 +615,7 @@ def filiais():
         db.session.commit()
     lista = Filial.query.all()
     usuarios = User.query.all()
-    return render_template('filiais.html', filiais=lista, usuarios=usuarios)
+    return render_template('autorizadas.html', filiais=lista, usuarios=usuarios)
 
 @app.route('/logout')
 def logout():
