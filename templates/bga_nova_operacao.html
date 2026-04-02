@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% block title %}Nova Operação BGA{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>Nova Operação BGA</h1>
+  <div class="topbar-actions">
+    <a href="{{ url_for('bga_dashboard') }}" class="btn btn-outline btn-sm">Voltar</a>
+  </div>
+</div>
+<div class="content">
+<form method="POST" enctype="multipart/form-data">
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
+
+    <!-- Left column -->
+    <div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="section-title">Identificação do Componente</div>
+        <div class="form-group">
+          <label class="form-label">Componente BGA *</label>
+          <input type="text" name="componente" class="form-control" required
+                 placeholder="Ex: Intel Core i7-8700K BGA1151, GPU NVIDIA RTX 3080..."
+                 style="font-size:15px">
+          <small style="color:var(--muted);font-size:11px">Seja específico: o nome é usado pela IA para definir o perfil de soldagem automaticamente.</small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descrição / Observações</label>
+          <textarea name="descricao" class="form-control" rows="3"
+                    placeholder="Informações adicionais sobre o componente, defeito anterior, histórico..."></textarea>
+        </div>
+        <div class="form-row col-2">
+          <div class="form-group">
+            <label class="form-label">Ordem de Serviço (OS)</label>
+            <select name="os_id" class="form-control">
+              <option value="">— Sem OS vinculada —</option>
+              {% for os in ordens %}
+              <option value="{{ os.id }}">OS #{{ '%05d' % os.id }} — {{ os.cliente }} / {{ os.equipamento }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Estação BGA</label>
+            <select name="maquina_id" class="form-control">
+              <option value="">— Selecionar máquina —</option>
+              {% for m in maquinas %}
+              <option value="{{ m.id }}">{{ m.nome }} ({{ m.modelo or 'sem modelo' }})</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">Perfil de Temperatura</div>
+        <div style="background:rgba(0,119,200,0.07);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0077c8" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+            <strong style="color:var(--blue-deeper)">Modo IA Autônomo (Recomendado)</strong>
+          </div>
+          <div style="font-size:12.5px;color:var(--muted)">
+            Deixe o campo abaixo em branco e clique em <strong>Criar Operação</strong>. Depois use
+            <strong>"Analisar com IA"</strong> na página da operação — a IA definirá automaticamente
+            o perfil ideal de temperatura para o componente informado.
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ou selecione um perfil manual</label>
+          <select name="perfil_id" class="form-control">
+            <option value="">— IA definirá o perfil automaticamente —</option>
+            {% for p in perfis %}
+            <option value="{{ p.id }}">{{ p.nome }} ({{ p.tipo_solda }}, pico {{ p.temp_reflow }}°C)</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right column -->
+    <div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="section-title">Foto — Antes da Soldagem</div>
+        <div class="form-group">
+          <label class="form-label">Foto do componente / PCB</label>
+          <input type="file" name="foto_antes" class="form-control" accept="image/*">
+          <small style="color:var(--muted);font-size:11px">Foto da placa antes do processo BGA (opcional, mas recomendado).</small>
+        </div>
+      </div>
+
+      <div class="card" style="background:#fffbeb;border-color:#fcd34d">
+        <div style="font-size:12.5px;color:#92400e">
+          <strong>Fluxo de trabalho BGA com IA:</strong>
+          <ol style="margin:8px 0 0 16px;line-height:1.8">
+            <li>Criar a operação neste formulário</li>
+            <li>Clicar em <strong>Analisar com IA</strong> — Claude define o perfil automaticamente</li>
+            <li>Clicar em <strong>Iniciar</strong> para começar a soldagem</li>
+            <li>Após concluir, enviar foto do resultado</li>
+            <li>Clicar em <strong>Inspecionar com IA</strong> para análise de qualidade</li>
+          </ol>
+        </div>
+      </div>
+
+      <div style="margin-top:20px">
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:13px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          Criar Operação BGA
+        </button>
+        <a href="{{ url_for('bga_dashboard') }}" class="btn btn-outline" style="width:100%;justify-content:center;margin-top:8px">Cancelar</a>
+      </div>
+    </div>
+
+  </div>
+</form>
+</div>
+{% endblock %}

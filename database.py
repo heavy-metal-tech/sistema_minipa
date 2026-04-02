@@ -81,3 +81,67 @@ class Estoque(db.Model):
     componente = db.Column(db.String(100), nullable=False)
     quantidade = db.Column(db.Integer, default=0)
     posicao = db.Column(db.String(50))
+
+# ── BGA AI Soldering Module ───────────────────────────────────────────────────
+
+class BGAPerfil(db.Model):
+    """Temperature reflow profile for a BGA package type."""
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False)
+    descricao = db.Column(db.String(200))
+    tipo_solda = db.Column(db.String(20), default='SAC305')  # SAC305, SnPb, etc.
+    # Preheat stage
+    temp_preheat = db.Column(db.Float, default=150.0)   # °C target
+    tempo_preheat = db.Column(db.Integer, default=90)   # seconds
+    # Soak stage
+    temp_soak = db.Column(db.Float, default=183.0)      # °C target
+    tempo_soak = db.Column(db.Integer, default=90)      # seconds
+    # Reflow stage
+    temp_reflow = db.Column(db.Float, default=245.0)    # °C peak
+    tempo_reflow = db.Column(db.Integer, default=60)    # seconds to peak
+    tempo_acima_liquidus = db.Column(db.Integer, default=40)  # seconds TAL
+    # Cooling
+    taxa_resfriamento = db.Column(db.Float, default=2.0)  # °C/second max
+    ativo = db.Column(db.Boolean, default=True)
+    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+    operacoes = db.relationship('BGAOperacao', backref='perfil', lazy=True)
+
+class BGAMaquina(db.Model):
+    """Represents a physical BGA rework station."""
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False)
+    modelo = db.Column(db.String(100))
+    status = db.Column(db.String(20), default='Ociosa')  # Ociosa, Em operação, Manutenção
+    temperatura_atual = db.Column(db.Float, default=25.0)
+    ultima_calibracao = db.Column(db.DateTime)
+    filial_id = db.Column(db.Integer, db.ForeignKey('filial.id'), nullable=True)
+    filial = db.relationship('Filial', backref='maquinas_bga')
+    operacoes = db.relationship('BGAOperacao', backref='maquina', lazy=True)
+
+class BGAOperacao(db.Model):
+    """A single BGA soldering/rework operation."""
+    id = db.Column(db.Integer, primary_key=True)
+    os_id = db.Column(db.Integer, db.ForeignKey('ordem_servico.id'), nullable=True)
+    os = db.relationship('OrdemServico', backref='operacoes_bga')
+    maquina_id = db.Column(db.Integer, db.ForeignKey('b_g_a_maquina.id'), nullable=True)
+    perfil_id = db.Column(db.Integer, db.ForeignKey('b_g_a_perfil.id'), nullable=True)
+    componente = db.Column(db.String(150), nullable=False)   # e.g. "Intel i7-8700K BGA1151"
+    descricao = db.Column(db.Text)
+    status = db.Column(db.String(20), default='Aguardando')  # Aguardando, Em andamento, Concluída, Falha
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    data_inicio = db.Column(db.DateTime)
+    data_fim = db.Column(db.DateTime)
+    tecnico = db.Column(db.String(100))
+    filial_id = db.Column(db.Integer, db.ForeignKey('filial.id'), nullable=True)
+    filial = db.relationship('Filial', backref='operacoes_bga')
+    # Photos
+    foto_antes = db.Column(db.String(400))   # Cloudinary URL
+    foto_depois = db.Column(db.String(400))  # Cloudinary URL
+    # AI results
+    perfil_ia_json = db.Column(db.Text)      # AI-recommended profile JSON
+    resultado_ia = db.Column(db.Text)        # AI inspection result JSON
+    qualidade_ia = db.Column(db.Integer)     # 0-100 quality score
+    aprovado_ia = db.Column(db.Boolean)
+    # Temperature log
+    log_temperatura = db.Column(db.Text)     # JSON array [{t, temp}]
+    observacoes = db.Column(db.Text)

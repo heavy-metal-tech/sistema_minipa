@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% block title %}BGA AI — Dashboard{% endblock %}
+{% block extra_css %}
+<style>
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: #fff; border-radius: 12px; border: 1px solid var(--border); padding: 18px 20px; }
+.stat-card .value { font-size: 28px; font-weight: 700; color: var(--blue-deeper); }
+.stat-card .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-top: 4px; }
+.stat-card.green .value { color: #16a34a; }
+.stat-card.red .value { color: #dc2626; }
+.stat-card.orange .value { color: #d97706; }
+.machine-card { border-left: 4px solid var(--blue); }
+.machine-card.em-operacao { border-color: #d97706; }
+.machine-card.manutencao { border-color: #dc2626; }
+.status-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.dot-ociosa { background: #16a34a; }
+.dot-em-operacao { background: #d97706; }
+.dot-manutencao { background: #dc2626; }
+.dot-aguardando { background: #6b7280; }
+.dot-concluida { background: #16a34a; }
+.dot-falha { background: #dc2626; }
+.quality-bar { height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; margin-top: 4px; }
+.quality-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>Máquina BGA — Soldagem Autônoma com IA</h1>
+  <div class="topbar-actions">
+    <a href="{{ url_for('bga_nova_operacao') }}" class="btn btn-primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+      Nova Operação
+    </a>
+  </div>
+</div>
+<div class="content">
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="value">{{ stats.total }}</div>
+      <div class="label">Total de Operações</div>
+    </div>
+    <div class="stat-card orange">
+      <div class="value">{{ stats.aguardando }}</div>
+      <div class="label">Aguardando</div>
+    </div>
+    <div class="stat-card" style="border-left:4px solid #d97706">
+      <div class="value" style="color:#d97706">{{ stats.em_andamento }}</div>
+      <div class="label">Em Andamento</div>
+    </div>
+    <div class="stat-card green">
+      <div class="value">{{ stats.concluidas }}</div>
+      <div class="label">Concluídas</div>
+    </div>
+    <div class="stat-card red">
+      <div class="value">{{ stats.falhas }}</div>
+      <div class="label">Falhas</div>
+    </div>
+    <div class="stat-card green">
+      <div class="value">{{ stats.taxa_aprovacao }}%</div>
+      <div class="label">Taxa de Aprovação IA</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 2fr;gap:20px;margin-bottom:24px">
+
+    <!-- Machines -->
+    <div>
+      <div class="section-title" style="margin-bottom:14px">Estações BGA</div>
+      {% if maquinas %}
+        {% for m in maquinas %}
+        <div class="card machine-card {{ 'em-operacao' if m.status == 'Em operação' else ('manutencao' if m.status == 'Manutenção' else '') }}" style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:700;font-size:14px">{{ m.nome }}</div>
+              <div style="font-size:12px;color:var(--muted)">{{ m.modelo or '—' }}</div>
+            </div>
+            <span style="font-size:12px;font-weight:600">
+              <span class="status-dot dot-{{ m.status | lower | replace(' ', '-') }}"></span>
+              {{ m.status }}
+            </span>
+          </div>
+          <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+            Temp. atual: <strong>{{ m.temperatura_atual }}°C</strong>
+            {% if m.ultima_calibracao %}
+              &nbsp;·&nbsp; Calibrada: {{ m.ultima_calibracao.strftime('%d/%m/%Y') }}
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="card" style="text-align:center;color:var(--muted);font-size:13px;padding:30px">
+          Nenhuma máquina cadastrada.
+          {% if current_user.is_admin %}
+          <br><a href="{{ url_for('bga_maquinas') }}" style="color:var(--blue)">Cadastrar máquina</a>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      <!-- Profiles quick list -->
+      <div class="section-title" style="margin:18px 0 12px">Perfis Ativos</div>
+      <div class="card" style="padding:14px">
+        {% if perfis %}
+          {% for p in perfis[:5] %}
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border){% if loop.last %};border-bottom:none{% endif %}">
+            <div>
+              <div style="font-size:13px;font-weight:600">{{ p.nome }}</div>
+              <div style="font-size:11px;color:var(--muted)">{{ p.tipo_solda }} · Pico: {{ p.temp_reflow }}°C</div>
+            </div>
+          </div>
+          {% endfor %}
+          {% if current_user.is_admin or current_user.is_gerente %}
+          <a href="{{ url_for('bga_perfis') }}" style="font-size:12px;color:var(--blue);display:block;margin-top:8px">Gerenciar perfis →</a>
+          {% endif %}
+        {% else %}
+          <div style="color:var(--muted);font-size:13px">Nenhum perfil cadastrado.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Recent operations -->
+    <div>
+      <div class="section-title" style="margin-bottom:14px">Operações Recentes</div>
+      <div class="card" style="padding:0">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Componente</th>
+                <th>Status</th>
+                <th>Qualidade IA</th>
+                <th>Técnico</th>
+                <th>Data</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if operacoes %}
+                {% for op in operacoes %}
+                <tr>
+                  <td style="font-weight:700;color:var(--blue)">{{ '%04d' % op.id }}</td>
+                  <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ op.componente }}">{{ op.componente }}</td>
+                  <td>
+                    {% set sc = {'Aguardando':'#6b7280','Em andamento':'#d97706','Concluída':'#16a34a','Falha':'#dc2626'} %}
+                    <span class="badge" style="background:{{ sc.get(op.status,'#6b7280') }}22;color:{{ sc.get(op.status,'#6b7280') }}">
+                      <span class="status-dot" style="background:{{ sc.get(op.status,'#6b7280') }}"></span>
+                      {{ op.status }}
+                    </span>
+                  </td>
+                  <td>
+                    {% if op.qualidade_ia is not none %}
+                      <div style="font-weight:700;font-size:13px;color:{{ '#16a34a' if op.aprovado_ia else '#dc2626' }}">
+                        {{ op.qualidade_ia }}/100
+                      </div>
+                      <div class="quality-bar" style="width:80px">
+                        <div class="quality-fill" style="width:{{ op.qualidade_ia }}%;background:{{ '#16a34a' if op.aprovado_ia else '#dc2626' }}"></div>
+                      </div>
+                    {% else %}
+                      <span style="color:var(--muted);font-size:12px">—</span>
+                    {% endif %}
+                  </td>
+                  <td style="font-size:12px">{{ op.tecnico or '—' }}</td>
+                  <td style="font-size:12px;color:var(--muted)">{{ op.data_criacao.strftime('%d/%m/%y') }}</td>
+                  <td><a href="{{ url_for('bga_ver_operacao', id=op.id) }}" class="btn btn-outline btn-sm">Ver</a></td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:30px">Nenhuma operação encontrada.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- How it works -->
+  <div class="card" style="background:linear-gradient(135deg,#003f6e,#0077c8);color:#fff;border:none">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:24px">
+      <div>
+        <div style="font-size:24px;margin-bottom:8px">1.</div>
+        <div style="font-weight:700;margin-bottom:4px">Criar Operação</div>
+        <div style="font-size:12px;opacity:.8">Informe o componente BGA a ser soldado e vincule à OS correspondente.</div>
+      </div>
+      <div>
+        <div style="font-size:24px;margin-bottom:8px">2.</div>
+        <div style="font-weight:700;margin-bottom:4px">IA Define o Perfil</div>
+        <div style="font-size:12px;opacity:.8">Claude AI analisa o componente e define automaticamente a curva de temperatura ideal (preheat, soak, reflow, TAL, cooling).</div>
+      </div>
+      <div>
+        <div style="font-size:24px;margin-bottom:8px">3.</div>
+        <div style="font-weight:700;margin-bottom:4px">Soldagem Autônoma</div>
+        <div style="font-size:12px;opacity:.8">A máquina executa o perfil definido pela IA. O log de temperatura é registrado em tempo real.</div>
+      </div>
+      <div>
+        <div style="font-size:24px;margin-bottom:8px">4.</div>
+        <div style="font-weight:700;margin-bottom:4px">Inspeção por Visão IA</div>
+        <div style="font-size:12px;opacity:.8">Após a soldagem, Claude analisa a foto do resultado e emite um laudo de qualidade (IPC-A-610) com score de 0–100.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

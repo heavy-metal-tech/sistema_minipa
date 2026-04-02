@@ -1,0 +1,304 @@
+{% extends 'base.html' %}
+{% block title %}Operação BGA #{{ '%04d' % op.id }}{% endblock %}
+{% block extra_css %}
+<style>
+.phase-badge { padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700; }
+.score-ring { position:relative;display:inline-flex;align-items:center;justify-content:center; }
+.score-ring svg { transform:rotate(-90deg); }
+.score-ring .score-text { position:absolute;font-size:22px;font-weight:800;color:var(--blue-deeper); }
+.defect-tag { display:inline-block;background:#fee2e2;color:#b91c1c;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600;margin:3px; }
+.warn-tag { display:inline-block;background:#fef3c7;color:#92400e;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600;margin:3px; }
+.rec-tag { display:inline-block;background:#dbeafe;color:#1d4ed8;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600;margin:3px; }
+.profile-row { display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px; }
+.profile-row:last-child { border-bottom:none; }
+.profile-row .key { color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase; }
+.profile-row .val { font-weight:700;color:var(--blue-deeper); }
+</style>
+{% endblock %}
+{% block content %}
+{% set sc = {'Aguardando':'#6b7280','Em andamento':'#d97706','Concluída':'#16a34a','Falha':'#dc2626'} %}
+<div class="topbar">
+  <h1>
+    Operação BGA #{{ '%04d' % op.id }} &nbsp;
+    <span class="badge" style="background:{{ sc.get(op.status,'#6b7280') }}22;color:{{ sc.get(op.status,'#6b7280') }};font-size:12px">
+      {{ op.status }}
+    </span>
+  </h1>
+  <div class="topbar-actions">
+    <a href="{{ url_for('bga_dashboard') }}" class="btn btn-outline btn-sm">Voltar</a>
+  </div>
+</div>
+<div class="content">
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
+
+  <!-- Left -->
+  <div>
+
+    <!-- Component info -->
+    <div class="card" style="margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:18px;font-weight:800;color:var(--blue-deeper)">{{ op.componente }}</div>
+          {% if op.descricao %}<div style="font-size:13px;color:var(--muted);margin-top:4px">{{ op.descricao }}</div>{% endif %}
+          <div style="margin-top:10px;display:flex;gap:14px;font-size:12px;color:var(--muted)">
+            {% if op.os %}<span>OS: <a href="{{ url_for('ver_os', id=op.os.id) }}" style="color:var(--blue)">#{{ '%05d' % op.os.id }}</a></span>{% endif %}
+            <span>Técnico: {{ op.tecnico or '—' }}</span>
+            <span>Criado: {{ op.data_criacao.strftime('%d/%m/%Y %H:%M') }}</span>
+            {% if op.data_inicio %}<span>Início: {{ op.data_inicio.strftime('%d/%m/%Y %H:%M') }}</span>{% endif %}
+            {% if op.data_fim %}<span>Fim: {{ op.data_fim.strftime('%d/%m/%Y %H:%M') }}</span>{% endif %}
+          </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:180px">
+          {% if op.status == 'Aguardando' %}
+            <form method="POST" action="{{ url_for('bga_analisar_ia', id=op.id) }}">
+              <button class="btn btn-primary" style="width:100%;justify-content:center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+                Analisar com IA
+              </button>
+            </form>
+            <form method="POST" action="{{ url_for('bga_iniciar', id=op.id) }}">
+              <button class="btn btn-green" style="width:100%;justify-content:center">Iniciar Soldagem</button>
+            </form>
+          {% elif op.status == 'Em andamento' %}
+            <form method="POST" action="{{ url_for('bga_concluir', id=op.id) }}" enctype="multipart/form-data"
+                  onsubmit="return confirm('Confirmar conclusão da soldagem?')">
+              <div style="margin-bottom:8px">
+                <label class="form-label">Foto após soldagem</label>
+                <input type="file" name="foto_depois" class="form-control" accept="image/*">
+              </div>
+              <button class="btn btn-green" style="width:100%;justify-content:center">Concluir Soldagem</button>
+            </form>
+            <form method="POST" action="{{ url_for('bga_cancelar', id=op.id) }}"
+                  onsubmit="return confirm('Marcar como Falha?')">
+              <button class="btn btn-red btn-sm" style="width:100%;justify-content:center">Registrar Falha</button>
+            </form>
+          {% elif op.status == 'Concluída' and op.resultado_ia is none %}
+            <form method="POST" action="{{ url_for('bga_inspecionar', id=op.id) }}">
+              <button class="btn btn-primary" style="width:100%;justify-content:center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                Inspecionar com IA
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Profile recommendation -->
+    {% if perfil_ia %}
+    <div class="card" style="margin-bottom:20px;border-left:4px solid #0077c8">
+      <div class="section-title">Perfil Definido pela IA</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0">
+        <div class="profile-row" style="flex-direction:column;padding:10px 14px;border-right:1px solid var(--border);border-bottom:none">
+          <div class="key">Tipo de Solda</div>
+          <div class="val">{{ perfil_ia.tipo_solda }}</div>
+        </div>
+        <div class="profile-row" style="flex-direction:column;padding:10px 14px;border-right:1px solid var(--border);border-bottom:none">
+          <div class="key">Nível de Dificuldade</div>
+          <div class="val">{{ perfil_ia.nivel_dificuldade }}</div>
+        </div>
+        <div class="profile-row" style="flex-direction:column;padding:10px 14px;border-bottom:none">
+          <div class="key">Reflow Pico</div>
+          <div class="val">{{ perfil_ia.temp_reflow }}°C</div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding:12px 14px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:12px;text-align:center">
+          <div><div style="color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase">Pré-aquec.</div><strong>{{ perfil_ia.temp_preheat }}°C / {{ perfil_ia.tempo_preheat }}s</strong></div>
+          <div><div style="color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase">Soak</div><strong>{{ perfil_ia.temp_soak }}°C / {{ perfil_ia.tempo_soak }}s</strong></div>
+          <div><div style="color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase">Reflow</div><strong>{{ perfil_ia.temp_reflow }}°C / {{ perfil_ia.tempo_reflow }}s</strong></div>
+          <div><div style="color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase">TAL</div><strong>{{ perfil_ia.tempo_acima_liquidus }}s</strong></div>
+        </div>
+      </div>
+      {% if perfil_ia.observacoes_ia %}
+      <div style="border-top:1px solid var(--border);padding:10px 14px;font-size:12.5px;color:var(--muted)">
+        <strong>IA:</strong> {{ perfil_ia.observacoes_ia }}
+      </div>
+      {% endif %}
+      {% if perfil_ia.riscos %}
+      <div style="border-top:1px solid var(--border);padding:10px 14px">
+        <div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:6px">Riscos Identificados</div>
+        {% for r in perfil_ia.riscos %}
+        <span class="warn-tag">{{ r }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Temperature chart -->
+    {% if log_temp %}
+    <div class="card" style="margin-bottom:20px">
+      <div class="section-title">Curva de Temperatura — Log do Processo</div>
+      <canvas id="tempChart" height="90"></canvas>
+    </div>
+    {% endif %}
+
+    <!-- AI Quality Inspection Result -->
+    {% if resultado %}
+    <div class="card" style="border-left:4px solid {{ '#16a34a' if op.aprovado_ia else '#dc2626' }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div class="section-title" style="margin:0">Laudo de Qualidade — IA (IPC-A-610)</div>
+        <div class="score-ring">
+          <svg width="80" height="80" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="32" fill="none" stroke="#e5e7eb" stroke-width="8"/>
+            <circle cx="40" cy="40" r="32" fill="none"
+                    stroke="{{ '#16a34a' if op.aprovado_ia else '#dc2626' }}" stroke-width="8"
+                    stroke-dasharray="{{ op.qualidade_ia * 2.01 }} 201"
+                    stroke-linecap="round"/>
+          </svg>
+          <span class="score-text" style="color:{{ '#16a34a' if op.aprovado_ia else '#dc2626' }}">{{ op.qualidade_ia }}</span>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px;padding:12px;border-radius:8px;background:{{ '#f0fdf4' if op.aprovado_ia else '#fef2f2' }};border:1px solid {{ '#bbf7d0' if op.aprovado_ia else '#fecaca' }}">
+        <span style="font-weight:700;font-size:14px;color:{{ '#16a34a' if op.aprovado_ia else '#dc2626' }}">
+          {{ 'APROVADO' if op.aprovado_ia else 'REPROVADO' }} — {{ resultado.acao_necessaria or '—' }}
+        </span>
+        <div style="font-size:12.5px;color:var(--text);margin-top:6px">{{ resultado.resumo }}</div>
+      </div>
+
+      {% if resultado.defeitos %}
+      <div style="margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#b91c1c;margin-bottom:6px">Defeitos Críticos</div>
+        {% for d in resultado.defeitos %}<span class="defect-tag">{{ d }}</span>{% endfor %}
+      </div>
+      {% endif %}
+
+      {% if resultado.advertencias %}
+      <div style="margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#92400e;margin-bottom:6px">Advertências</div>
+        {% for w in resultado.advertencias %}<span class="warn-tag">{{ w }}</span>{% endfor %}
+      </div>
+      {% endif %}
+
+      {% if resultado.recomendacoes %}
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#1d4ed8;margin-bottom:6px">Recomendações</div>
+        {% for r in resultado.recomendacoes %}<span class="rec-tag">{{ r }}</span>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Right column -->
+  <div>
+
+    <!-- Profile summary -->
+    {% if op.perfil %}
+    <div class="card" style="margin-bottom:20px">
+      <div class="section-title">Perfil Aplicado</div>
+      <div class="profile-row"><span class="key">Nome</span><span class="val">{{ op.perfil.nome }}</span></div>
+      <div class="profile-row"><span class="key">Tipo</span><span class="val">{{ op.perfil.tipo_solda }}</span></div>
+      <div class="profile-row"><span class="key">Pré-aquec.</span><span class="val">{{ op.perfil.temp_preheat }}°C / {{ op.perfil.tempo_preheat }}s</span></div>
+      <div class="profile-row"><span class="key">Soak</span><span class="val">{{ op.perfil.temp_soak }}°C / {{ op.perfil.tempo_soak }}s</span></div>
+      <div class="profile-row"><span class="key">Reflow pico</span><span class="val">{{ op.perfil.temp_reflow }}°C</span></div>
+      <div class="profile-row"><span class="key">Tempo reflow</span><span class="val">{{ op.perfil.tempo_reflow }}s</span></div>
+      <div class="profile-row"><span class="key">TAL</span><span class="val">{{ op.perfil.tempo_acima_liquidus }}s</span></div>
+      <div class="profile-row"><span class="key">Taxa resfr.</span><span class="val">{{ op.perfil.taxa_resfriamento }}°C/s</span></div>
+    </div>
+    {% endif %}
+
+    <!-- Photos -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="section-title">Fotos</div>
+      {% if op.foto_antes %}
+      <div style="margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Antes</div>
+        <img src="{{ op.foto_antes }}" style="width:100%;border-radius:8px;border:1px solid var(--border)" alt="Antes">
+      </div>
+      {% endif %}
+      {% if op.foto_depois %}
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Depois</div>
+        <img src="{{ op.foto_depois }}" style="width:100%;border-radius:8px;border:1px solid var(--border)" alt="Depois">
+      </div>
+      {% endif %}
+      {% if not op.foto_antes and not op.foto_depois %}
+      <div style="color:var(--muted);font-size:13px;text-align:center;padding:16px">Nenhuma foto registrada.</div>
+      {% endif %}
+    </div>
+
+    <!-- Machine -->
+    {% if op.maquina %}
+    <div class="card" style="margin-bottom:20px">
+      <div class="section-title">Estação BGA</div>
+      <div style="font-weight:700">{{ op.maquina.nome }}</div>
+      <div style="font-size:12px;color:var(--muted)">{{ op.maquina.modelo or '—' }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Observations -->
+    {% if op.observacoes %}
+    <div class="card">
+      <div class="section-title">Observações</div>
+      <div style="font-size:13px">{{ op.observacoes }}</div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+</div>
+
+{% if log_temp %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const logData = {{ log_temp | tojson }};
+const labels = logData.map(p => p.t);
+const temps = logData.map(p => p.temp);
+const fases = logData.map(p => p.fase);
+
+// Color segments by phase
+const bgColors = logData.map(p => {
+  const c = {'Pré-aquecimento':'rgba(59,130,246,0.4)','Soak':'rgba(234,179,8,0.4)',
+              'Reflow':'rgba(239,68,68,0.5)','Pico TAL':'rgba(220,38,38,0.7)',
+              'Resfriamento':'rgba(34,197,94,0.4)'};
+  return c[p.fase] || 'rgba(107,114,128,0.3)';
+});
+
+new Chart(document.getElementById('tempChart'), {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [{
+      label: 'Temperatura (°C)',
+      data: temps,
+      borderColor: '#dc2626',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.3,
+      fill: false,
+      segment: {
+        borderColor: ctx => {
+          const fase = fases[ctx.p0DataIndex];
+          const c = {'Pré-aquecimento':'#3b82f6','Soak':'#eab308',
+                     'Reflow':'#ef4444','Pico TAL':'#dc2626','Resfriamento':'#22c55e'};
+          return c[fase] || '#6b7280';
+        }
+      }
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => `${ctx.parsed.y}°C — ${fases[ctx.dataIndex]}`
+        }
+      }
+    },
+    scales: {
+      x: { title: { display: true, text: 'Tempo (s)', font: { size: 11 } }, ticks: { maxTicksLimit: 15 } },
+      y: { title: { display: true, text: 'Temperatura (°C)', font: { size: 11 } },
+           suggestedMin: 20, suggestedMax: 270 }
+    }
+  }
+});
+</script>
+{% endif %}
+{% endblock %}

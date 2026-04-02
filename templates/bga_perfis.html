@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+{% block title %}Perfis de Temperatura BGA{% endblock %}
+{% block extra_css %}
+<style>
+.perfil-card { background:#fff;border-radius:12px;border:1px solid var(--border);padding:20px;margin-bottom:16px; }
+.temp-stage { text-align:center;padding:10px 8px;border-radius:8px; }
+.temp-stage .stage-label { font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px; }
+.temp-stage .stage-val { font-size:15px;font-weight:800; }
+.temp-stage .stage-time { font-size:11px;font-weight:500;color:var(--muted); }
+.stage-preheat { background:#dbeafe;color:#1d4ed8; }
+.stage-soak { background:#fef9c3;color:#854d0e; }
+.stage-reflow { background:#fee2e2;color:#b91c1c; }
+.stage-cooling { background:#dcfce7;color:#166534; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>Perfis de Temperatura BGA</h1>
+</div>
+<div class="content">
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:24px">
+
+  <!-- List of profiles -->
+  <div>
+    {% if perfis %}
+      {% for p in perfis %}
+      <div class="perfil-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+          <div>
+            <div style="font-size:16px;font-weight:800;color:var(--blue-deeper)">{{ p.nome }}</div>
+            {% if p.descricao %}<div style="font-size:12.5px;color:var(--muted);margin-top:2px">{{ p.descricao }}</div>{% endif %}
+            <div style="margin-top:6px">
+              <span class="badge" style="background:#dbeafe;color:#1d4ed8;font-size:11px">{{ p.tipo_solda }}</span>
+              {% if 'IA' in p.nome or 'IA' in (p.descricao or '') %}
+              <span class="badge" style="background:#f0fdf4;color:#16a34a;font-size:11px;margin-left:4px">Gerado por IA</span>
+              {% endif %}
+            </div>
+          </div>
+          {% if current_user.is_admin or current_user.is_gerente %}
+          <form method="POST" onsubmit="return confirm('Desativar este perfil?')">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="id" value="{{ p.id }}">
+            <button class="btn btn-red btn-sm">Desativar</button>
+          </form>
+          {% endif %}
+        </div>
+
+        <!-- Temperature stages visual -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          <div class="temp-stage stage-preheat">
+            <div class="stage-label">Pré-aquec.</div>
+            <div class="stage-val">{{ p.temp_preheat }}°C</div>
+            <div class="stage-time">{{ p.tempo_preheat }}s</div>
+          </div>
+          <div class="temp-stage stage-soak">
+            <div class="stage-label">Soak</div>
+            <div class="stage-val">{{ p.temp_soak }}°C</div>
+            <div class="stage-time">{{ p.tempo_soak }}s</div>
+          </div>
+          <div class="temp-stage stage-reflow">
+            <div class="stage-label">Reflow Pico</div>
+            <div class="stage-val">{{ p.temp_reflow }}°C</div>
+            <div class="stage-time">{{ p.tempo_reflow }}s ramp · TAL {{ p.tempo_acima_liquidus }}s</div>
+          </div>
+          <div class="temp-stage stage-cooling">
+            <div class="stage-label">Resfriamento</div>
+            <div class="stage-val">≤{{ p.taxa_resfriamento }}°C/s</div>
+            <div class="stage-time">Taxa máx.</div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;font-size:11px;color:var(--muted)">
+          Cadastrado em: {{ p.criado_em.strftime('%d/%m/%Y') if p.criado_em else '—' }}
+          &nbsp;·&nbsp; {{ p.operacoes | length }} operação(ões) realizadas
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="card" style="text-align:center;color:var(--muted);padding:40px">
+        Nenhum perfil cadastrado.
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Add profile form -->
+  {% if current_user.is_admin or current_user.is_gerente %}
+  <div>
+    <div class="card" style="position:sticky;top:76px">
+      <div class="section-title">Novo Perfil Manual</div>
+      <form method="POST">
+        <input type="hidden" name="action" value="add">
+        <div class="form-group">
+          <label class="form-label">Nome do Perfil *</label>
+          <input type="text" name="nome" class="form-control" required placeholder="Ex: SAC305 CPU AMD">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descrição</label>
+          <textarea name="descricao" class="form-control" rows="2" placeholder="Descrição técnica..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo de Solda</label>
+          <select name="tipo_solda" class="form-control">
+            <option value="SAC305">SAC305 (Lead-Free)</option>
+            <option value="SnPb">SnPb 63/37 (Eutectic)</option>
+            <option value="SAC405">SAC405</option>
+            <option value="Outro">Outro</option>
+          </select>
+        </div>
+
+        <div style="background:var(--light);border-radius:8px;padding:12px;margin-bottom:12px">
+          <div style="font-size:10.5px;font-weight:800;text-transform:uppercase;color:var(--blue);margin-bottom:10px">Pré-aquecimento</div>
+          <div class="form-row col-2">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Temp. (°C)</label>
+              <input type="number" name="temp_preheat" class="form-control" value="150" min="80" max="200" step="1">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Tempo (s)</label>
+              <input type="number" name="tempo_preheat" class="form-control" value="90" min="30" max="300">
+            </div>
+          </div>
+        </div>
+
+        <div style="background:var(--light);border-radius:8px;padding:12px;margin-bottom:12px">
+          <div style="font-size:10.5px;font-weight:800;text-transform:uppercase;color:#854d0e;margin-bottom:10px">Soak</div>
+          <div class="form-row col-2">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Temp. (°C)</label>
+              <input type="number" name="temp_soak" class="form-control" value="183" min="130" max="220" step="1">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Tempo (s)</label>
+              <input type="number" name="tempo_soak" class="form-control" value="90" min="30" max="300">
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#fff0f0;border-radius:8px;padding:12px;margin-bottom:12px">
+          <div style="font-size:10.5px;font-weight:800;text-transform:uppercase;color:#b91c1c;margin-bottom:10px">Reflow</div>
+          <div class="form-row col-2">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Pico (°C)</label>
+              <input type="number" name="temp_reflow" class="form-control" value="245" min="180" max="280" step="1">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Rampa (s)</label>
+              <input type="number" name="tempo_reflow" class="form-control" value="60" min="20" max="180">
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:8px;margin-bottom:0">
+            <label class="form-label">TAL — Tempo acima do líquidus (s)</label>
+            <input type="number" name="tempo_acima_liquidus" class="form-control" value="40" min="10" max="90">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Taxa de Resfriamento máx. (°C/s)</label>
+          <input type="number" name="taxa_resfriamento" class="form-control" value="2.0" min="0.5" max="6" step="0.5">
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
+          Salvar Perfil
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+</div>
+{% endblock %}

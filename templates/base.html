@@ -186,6 +186,21 @@ textarea.form-control { resize: vertical; min-height: 90px; }
       Filiais
     </a>
     {% endif %}
+    <div class="nav-section">BGA — Soldagem IA</div>
+    <a href="{{ url_for('bga_dashboard') }}" class="{{ 'active' if request.endpoint in ('bga_dashboard','bga_ver_operacao') }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+      Máquina BGA
+    </a>
+    <a href="{{ url_for('bga_nova_operacao') }}" class="{{ 'active' if request.endpoint == 'bga_nova_operacao' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      Nova Operação BGA
+    </a>
+    {% if current_user.is_admin or current_user.is_gerente %}
+    <a href="{{ url_for('bga_perfis') }}" class="{{ 'active' if request.endpoint == 'bga_perfis' }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Perfis de Temperatura
+    </a>
+    {% endif %}
   </nav>
   <div class="sidebar-footer">
     <div class="sidebar-user">

@@ -19,7 +19,8 @@ from reportlab.lib import colors
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
-from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial
+from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial, BGAPerfil, BGAOperacao, BGAMaquina
+import bga_ia
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'minipa_top_secret_2026'
@@ -568,6 +569,298 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+# ── BGA AI Soldering Module ───────────────────────────────────────────────────
+
+def _salvar_foto_cloudinary(file_obj):
+    """Upload a file to Cloudinary and return the secure URL."""
+    if not file_obj or not file_obj.filename:
+        return None
+    try:
+        result = cloudinary.uploader.upload(file_obj, folder='minipa_bga')
+        return result.get('secure_url')
+    except Exception:
+        return None
+
+
+@app.route('/bga')
+@login_required
+def bga_dashboard():
+    maquinas = BGAMaquina.query.all()
+    perfis = BGAPerfil.query.filter_by(ativo=True).all()
+    query = BGAOperacao.query
+    if not current_user.is_admin and current_user.filial_id:
+        query = query.filter_by(filial_id=current_user.filial_id)
+    operacoes = query.order_by(BGAOperacao.id.desc()).limit(20).all()
+    stats = {
+        'total': BGAOperacao.query.count(),
+        'aguardando': BGAOperacao.query.filter_by(status='Aguardando').count(),
+        'em_andamento': BGAOperacao.query.filter_by(status='Em andamento').count(),
+        'concluidas': BGAOperacao.query.filter_by(status='Concluída').count(),
+        'falhas': BGAOperacao.query.filter_by(status='Falha').count(),
+    }
+    aprovadas = BGAOperacao.query.filter_by(aprovado_ia=True).count()
+    stats['taxa_aprovacao'] = round(aprovadas / stats['concluidas'] * 100) if stats['concluidas'] else 0
+    return render_template('bga_dashboard.html', maquinas=maquinas, perfis=perfis,
+                           operacoes=operacoes, stats=stats)
+
+
+@app.route('/bga/nova_operacao', methods=['GET', 'POST'])
+@login_required
+def bga_nova_operacao():
+    perfis = BGAPerfil.query.filter_by(ativo=True).all()
+    maquinas = BGAMaquina.query.filter_by(status='Ociosa').all()
+    ordens = OrdemServico.query.order_by(OrdemServico.id.desc()).limit(50).all()
+    if request.method == 'POST':
+        componente = request.form.get('componente', '').strip()
+        if not componente:
+            flash('Nome do componente é obrigatório.', 'error')
+            return redirect(url_for('bga_nova_operacao'))
+        op = BGAOperacao(
+            componente=componente,
+            descricao=request.form.get('descricao'),
+            tecnico=current_user.nome_completo,
+            filial_id=current_user.filial_id,
+            status='Aguardando',
+        )
+        os_id = request.form.get('os_id')
+        if os_id:
+            op.os_id = int(os_id)
+        perfil_id = request.form.get('perfil_id')
+        if perfil_id:
+            op.perfil_id = int(perfil_id)
+        maquina_id = request.form.get('maquina_id')
+        if maquina_id:
+            op.maquina_id = int(maquina_id)
+        # Upload foto antes
+        foto_antes = request.files.get('foto_antes')
+        op.foto_antes = _salvar_foto_cloudinary(foto_antes)
+        db.session.add(op)
+        db.session.commit()
+        flash(f'Operação BGA #{op.id} criada. Use "Analisar com IA" para definir o perfil automaticamente.', 'success')
+        return redirect(url_for('bga_ver_operacao', id=op.id))
+    return render_template('bga_nova_operacao.html', perfis=perfis, maquinas=maquinas, ordens=ordens)
+
+
+@app.route('/bga/operacao/<int:id>')
+@login_required
+def bga_ver_operacao(id):
+    op = BGAOperacao.query.get_or_404(id)
+    resultado = json.loads(op.resultado_ia) if op.resultado_ia else None
+    perfil_ia = json.loads(op.perfil_ia_json) if op.perfil_ia_json else None
+    log_temp = json.loads(op.log_temperatura) if op.log_temperatura else []
+    return render_template('bga_ver_operacao.html', op=op, resultado=resultado,
+                           perfil_ia=perfil_ia, log_temp=log_temp)
+
+
+@app.route('/bga/operacao/<int:id>/analisar_ia', methods=['POST'])
+@login_required
+def bga_analisar_ia(id):
+    """AI analyzes the component and recommends a soldering profile (autonomous mode)."""
+    op = BGAOperacao.query.get_or_404(id)
+    if op.status not in ('Aguardando',):
+        flash('Análise de IA só pode ser feita antes de iniciar a operação.', 'error')
+        return redirect(url_for('bga_ver_operacao', id=id))
+    try:
+        perfil_dados = bga_ia.analisar_componente_bga(op.componente, op.descricao or '')
+    except Exception as e:
+        perfil_dados = bga_ia.mock_analisar_componente(op.componente)
+        flash(f'IA indisponível — perfil padrão aplicado. ({e})', 'error')
+    op.perfil_ia_json = json.dumps(perfil_dados, ensure_ascii=False)
+    # Auto-create or update a profile based on AI recommendation
+    if not op.perfil_id:
+        novo_perfil = BGAPerfil(
+            nome=f'IA – {op.componente[:40]}',
+            descricao=perfil_dados.get('observacoes_ia', ''),
+            tipo_solda=perfil_dados.get('tipo_solda', 'SAC305'),
+            temp_preheat=perfil_dados['temp_preheat'],
+            tempo_preheat=perfil_dados['tempo_preheat'],
+            temp_soak=perfil_dados['temp_soak'],
+            tempo_soak=perfil_dados['tempo_soak'],
+            temp_reflow=perfil_dados['temp_reflow'],
+            tempo_reflow=perfil_dados['tempo_reflow'],
+            tempo_acima_liquidus=perfil_dados.get('tempo_acima_liquidus', 40),
+            taxa_resfriamento=perfil_dados.get('taxa_resfriamento', 2.0),
+        )
+        db.session.add(novo_perfil)
+        db.session.flush()
+        op.perfil_id = novo_perfil.id
+    db.session.commit()
+    flash('Perfil de soldagem definido pela IA com sucesso!', 'success')
+    return redirect(url_for('bga_ver_operacao', id=id))
+
+
+@app.route('/bga/operacao/<int:id>/iniciar', methods=['POST'])
+@login_required
+def bga_iniciar(id):
+    """Marks operation as started and updates machine status."""
+    op = BGAOperacao.query.get_or_404(id)
+    if op.status != 'Aguardando':
+        flash('Operação não está no estado Aguardando.', 'error')
+        return redirect(url_for('bga_ver_operacao', id=id))
+    op.status = 'Em andamento'
+    op.data_inicio = datetime.utcnow()
+    if op.maquina_id:
+        maquina = BGAMaquina.query.get(op.maquina_id)
+        if maquina:
+            maquina.status = 'Em operação'
+    db.session.commit()
+    flash('Operação BGA iniciada. Processo de soldagem em andamento...', 'success')
+    return redirect(url_for('bga_ver_operacao', id=id))
+
+
+@app.route('/bga/operacao/<int:id>/concluir', methods=['POST'])
+@login_required
+def bga_concluir(id):
+    """Completes the operation: generates temperature log, uploads after-photo."""
+    op = BGAOperacao.query.get_or_404(id)
+    if op.status != 'Em andamento':
+        flash('Operação não está em andamento.', 'error')
+        return redirect(url_for('bga_ver_operacao', id=id))
+    # Upload after-photo
+    foto_depois = request.files.get('foto_depois')
+    if foto_depois and foto_depois.filename:
+        op.foto_depois = _salvar_foto_cloudinary(foto_depois)
+    # Generate temperature log from profile
+    perfil = op.perfil
+    if perfil:
+        log = bga_ia.gerar_log_temperatura(
+            perfil.temp_preheat, perfil.tempo_preheat,
+            perfil.temp_soak, perfil.tempo_soak,
+            perfil.temp_reflow, perfil.tempo_reflow,
+            perfil.tempo_acima_liquidus,
+        )
+    else:
+        # Default SAC305 curve if no profile set
+        log = bga_ia.gerar_log_temperatura(150, 90, 183, 90, 245, 60, 40)
+    op.log_temperatura = json.dumps(log)
+    op.status = 'Concluída'
+    op.data_fim = datetime.utcnow()
+    if op.maquina_id:
+        maquina = BGAMaquina.query.get(op.maquina_id)
+        if maquina:
+            maquina.status = 'Ociosa'
+            maquina.temperatura_atual = 25.0
+    db.session.commit()
+    flash('Operação concluída! Faça a inspeção com IA para avaliar a qualidade.', 'success')
+    return redirect(url_for('bga_ver_operacao', id=id))
+
+
+@app.route('/bga/operacao/<int:id>/inspecionar', methods=['POST'])
+@login_required
+def bga_inspecionar(id):
+    """AI inspects the solder joint quality from the after-photo."""
+    op = BGAOperacao.query.get_or_404(id)
+    if op.status not in ('Concluída', 'Falha'):
+        flash('A operação precisa estar concluída para inspeção.', 'error')
+        return redirect(url_for('bga_ver_operacao', id=id))
+    perfil_nome = op.perfil.nome if op.perfil else ''
+    try:
+        resultado = bga_ia.inspecionar_qualidade_bga(
+            foto_url=op.foto_depois or '',
+            componente=op.componente,
+            perfil_nome=perfil_nome,
+            observacoes=op.observacoes or '',
+        )
+    except Exception as e:
+        resultado = bga_ia.mock_inspecionar_qualidade(op.componente)
+        flash(f'IA indisponível — resultado simulado. ({e})', 'error')
+    op.resultado_ia = json.dumps(resultado, ensure_ascii=False)
+    op.qualidade_ia = resultado.get('qualidade', 0)
+    op.aprovado_ia = resultado.get('aprovado', False)
+    db.session.commit()
+    if op.aprovado_ia:
+        flash(f'Inspeção IA concluída — APROVADO com {op.qualidade_ia}/100!', 'success')
+    else:
+        flash(f'Inspeção IA concluída — REPROVADO ({op.qualidade_ia}/100). Verifique os defeitos.', 'error')
+    return redirect(url_for('bga_ver_operacao', id=id))
+
+
+@app.route('/bga/operacao/<int:id>/cancelar', methods=['POST'])
+@login_required
+def bga_cancelar(id):
+    op = BGAOperacao.query.get_or_404(id)
+    op.status = 'Falha'
+    op.data_fim = datetime.utcnow()
+    if op.maquina_id:
+        maquina = BGAMaquina.query.get(op.maquina_id)
+        if maquina:
+            maquina.status = 'Ociosa'
+    db.session.commit()
+    flash('Operação marcada como Falha.', 'error')
+    return redirect(url_for('bga_ver_operacao', id=id))
+
+
+@app.route('/bga/perfis', methods=['GET', 'POST'])
+@login_required
+def bga_perfis():
+    if not (current_user.is_admin or current_user.is_gerente):
+        return redirect(url_for('bga_dashboard'))
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'add':
+            p = BGAPerfil(
+                nome=request.form.get('nome'),
+                descricao=request.form.get('descricao'),
+                tipo_solda=request.form.get('tipo_solda', 'SAC305'),
+                temp_preheat=float(request.form.get('temp_preheat', 150)),
+                tempo_preheat=int(request.form.get('tempo_preheat', 90)),
+                temp_soak=float(request.form.get('temp_soak', 183)),
+                tempo_soak=int(request.form.get('tempo_soak', 90)),
+                temp_reflow=float(request.form.get('temp_reflow', 245)),
+                tempo_reflow=int(request.form.get('tempo_reflow', 60)),
+                tempo_acima_liquidus=int(request.form.get('tempo_acima_liquidus', 40)),
+                taxa_resfriamento=float(request.form.get('taxa_resfriamento', 2.0)),
+            )
+            db.session.add(p)
+            flash('Perfil criado com sucesso!', 'success')
+        elif action == 'delete':
+            p = BGAPerfil.query.get(int(request.form.get('id')))
+            if p:
+                p.ativo = False
+                flash('Perfil desativado.', 'success')
+        db.session.commit()
+    perfis = BGAPerfil.query.filter_by(ativo=True).order_by(BGAPerfil.id.desc()).all()
+    return render_template('bga_perfis.html', perfis=perfis)
+
+
+@app.route('/bga/maquinas', methods=['GET', 'POST'])
+@login_required
+def bga_maquinas():
+    if not current_user.is_admin:
+        return redirect(url_for('bga_dashboard'))
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'add':
+            m = BGAMaquina(
+                nome=request.form.get('nome'),
+                modelo=request.form.get('modelo'),
+                filial_id=current_user.filial_id,
+            )
+            db.session.add(m)
+            flash('Máquina cadastrada!', 'success')
+        elif action == 'delete':
+            m = BGAMaquina.query.get(int(request.form.get('id')))
+            if m:
+                db.session.delete(m)
+                flash('Máquina removida.', 'success')
+        db.session.commit()
+    maquinas = BGAMaquina.query.all()
+    return render_template('bga_maquinas.html', maquinas=maquinas)
+
+
+@app.route('/api/bga/estatisticas')
+@login_required
+def api_bga_estatisticas():
+    from sqlalchemy import func
+    ops = BGAOperacao.query
+    por_status = db.session.query(BGAOperacao.status, func.count(BGAOperacao.id)).group_by(BGAOperacao.status).all()
+    scores = [o.qualidade_ia for o in BGAOperacao.query.filter(BGAOperacao.qualidade_ia.isnot(None)).all()]
+    return jsonify({
+        'por_status': {s: c for s, c in por_status},
+        'media_qualidade': round(sum(scores) / len(scores), 1) if scores else 0,
+        'total_inspecionadas': len(scores),
+    })
+
 # ── Init DB ───────────────────────────────────────────────────────────────────
 
 with app.app_context():
@@ -600,6 +893,29 @@ with app.app_context():
         for tipo, valor in [('Reparo com PCI', 180.00), ('Reparo Geral', 120.00),
                             ('Calibração', 90.00), ('Diagnóstico', 60.00)]:
             db.session.add(TabelaPreco(tipo_servico=tipo, valor=valor))
+        db.session.commit()
+    # Seed default BGA profiles
+    if BGAPerfil.query.count() == 0:
+        perfis_default = [
+            dict(nome='SAC305 — Padrão Lead-Free', tipo_solda='SAC305',
+                 descricao='Perfil padrão para soldas sem chumbo (SAC305). Norma IPC/JEDEC.',
+                 temp_preheat=150, tempo_preheat=90, temp_soak=183, tempo_soak=90,
+                 temp_reflow=245, tempo_reflow=60, tempo_acima_liquidus=40, taxa_resfriamento=2.0),
+            dict(nome='SnPb — Eutectic (63/37)', tipo_solda='SnPb',
+                 descricao='Perfil para solda estanhada eutética com chumbo 63/37.',
+                 temp_preheat=120, tempo_preheat=70, temp_soak=150, tempo_soak=70,
+                 temp_reflow=210, tempo_reflow=50, tempo_acima_liquidus=30, taxa_resfriamento=3.0),
+            dict(nome='SAC305 — Alta Massa Térmica', tipo_solda='SAC305',
+                 descricao='Para componentes de alta massa térmica (CPU/GPU grandes).',
+                 temp_preheat=150, tempo_preheat=120, temp_soak=183, tempo_soak=120,
+                 temp_reflow=250, tempo_reflow=75, tempo_acima_liquidus=50, taxa_resfriamento=1.5),
+        ]
+        for pd in perfis_default:
+            db.session.add(BGAPerfil(**pd))
+        db.session.commit()
+    # Seed default BGA machine
+    if BGAMaquina.query.count() == 0:
+        db.session.add(BGAMaquina(nome='Estação BGA #1', modelo='Minipa BGA-3000 AI'))
         db.session.commit()
 
 if __name__ == '__main__':
