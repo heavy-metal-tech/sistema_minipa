@@ -526,6 +526,18 @@ def add_estoque():
     db.session.commit()
     return redirect(url_for('dashboard'))
 
+@app.route('/os/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_os(id):
+    if not (current_user.is_admin or current_user.is_gerente):
+        flash('Sem permissão para deletar OS.', 'error')
+        return redirect(url_for('dashboard'))
+    os_data = OrdemServico.query.get_or_404(id)
+    db.session.delete(os_data)
+    db.session.commit()
+    flash(f'OS #{id:05d} deletada com sucesso.', 'success')
+    return redirect(url_for('dashboard'))
+
 @app.route('/estoque/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_estoque(id):
