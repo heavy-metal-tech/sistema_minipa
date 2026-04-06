@@ -327,7 +327,7 @@ def login():
         if not username or not password:
             flash('Preencha usuário e senha.', 'error')
             return render_template('login.html')
-        user = User.query.filter_by(username=username).first()
+        user = User.query.filter(db.func.lower(User.username) == username).first()
         if user and check_password_hash(user.password, password):
             login_user(user)
             return redirect(url_for('dashboard'))
@@ -337,6 +337,8 @@ def login():
 @app.route('/trocar_senha', methods=['GET', 'POST'])
 @login_required
 def trocar_senha():
+    if not getattr(current_user, 'must_change_password', False):
+        return redirect(url_for('dashboard'))
     if request.method == 'POST':
         nova = request.form.get('nova_senha', '')
         confirma = request.form.get('confirma_senha', '')
@@ -618,7 +620,7 @@ def novo_tecnico():
     if current_user.is_admin or current_user.is_gerente:
         cargo = request.form.get('cargo', 'tecnico')
         u = User(
-            username=request.form.get('username'),
+            username=request.form.get('username', '').strip().lower(),
             password=generate_password_hash(request.form.get('password')),
             nome_completo=request.form.get('nome'),
             is_admin=(cargo == 'admin') and current_user.is_admin,
