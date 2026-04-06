@@ -356,16 +356,24 @@ def trocar_senha():
 @login_required
 def dashboard():
     from collections import defaultdict
+    from datetime import datetime, timedelta
+    from sqlalchemy import func
+
     q = request.args.get('q', '')
     status_filter = request.args.get('status', '')
-    query = OrdemServico.query
+
+    # Base query scoped to what this user can see
+    base_q = OrdemServico.query
     if current_user.is_admin or current_user.is_gerente:
-        pass  # vê tudo
+        pass
     elif current_user.is_supervisor:
         ids = [f.id for f in current_user.autorizadas_supervisionadas]
-        query = query.filter(OrdemServico.filial_id.in_(ids)) if ids else query.filter(db.false())
+        base_q = base_q.filter(OrdemServico.filial_id.in_(ids)) if ids else base_q.filter(db.false())
     elif current_user.filial_id:
-        query = query.filter_by(filial_id=current_user.filial_id)
+        base_q = base_q.filter_by(filial_id=current_user.filial_id)
+
+    # OS list with search/filter on top of base
+    query = base_q
     if q:
         query = query.filter(
             OrdemServico.cliente.ilike(f'%{q}%') |
@@ -375,32 +383,37 @@ def dashboard():
         query = query.filter_by(status=status_filter)
     ordens = query.order_by(OrdemServico.id.desc()).all()
     estoque = Estoque.query.all()
+
+    # Stats scoped to base_q
+    all_visible = base_q.all()
     stats = {
-        'abertas': OrdemServico.query.filter_by(status='Aberta').count(),
-        'aguardando': OrdemServico.query.filter_by(status='Aguardando peça').count(),
-        'concluidas': OrdemServico.query.filter_by(status='Concluída').count(),
-        'total': OrdemServico.query.count(),
-        'faturamento': sum(float(o.valor.replace(',','.')) for o in OrdemServico.query.all() if o.valor and o.valor.replace(',','.').replace('.','',1).isdigit()),
+        'abertas': base_q.filter_by(status='Aberta').count(),
+        'aguardando': base_q.filter_by(status='Aguardando peça').count(),
+        'concluidas': base_q.filter_by(status='Concluída').count(),
+        'total': base_q.count(),
+        'faturamento': sum(float(o.valor.replace(',','.')) for o in all_visible if o.valor and o.valor.replace(',','.').replace('.','',1).isdigit()),
     }
-    # Gráfico OS por mês (últimos 6 meses)
-    from datetime import datetime, timedelta
+
+    # Gráfico OS por mês (últimos 6 meses) — scoped
     meses = []
     os_por_mes = []
     for i in range(5, -1, -1):
         d = datetime.now().replace(day=1) - timedelta(days=i*28)
-        label = d.strftime('%b/%y')
-        count = OrdemServico.query.filter(
+        count = base_q.filter(
             db.extract('month', OrdemServico.data_abertura) == d.month,
             db.extract('year', OrdemServico.data_abertura) == d.year
         ).count()
-        meses.append(label)
+        meses.append(d.strftime('%b/%y'))
         os_por_mes.append(count)
-    # Gráfico por status
+
+    # Gráfico por status — scoped
     status_labels = ['Aberta', 'Em análise', 'Aguardando peça', 'Concluída', 'Enviada para fabricante']
-    status_data = [OrdemServico.query.filter_by(status=s).count() for s in status_labels]
-    # Top equipamentos
-    from sqlalchemy import func
-    top_equip = db.session.query(OrdemServico.equipamento, func.count(OrdemServico.id).label('total'))        .group_by(OrdemServico.equipamento).order_by(func.count(OrdemServico.id).desc()).limit(5).all()
+    status_data = [base_q.filter_by(status=s).count() for s in status_labels]
+
+    # Top equipamentos — scoped
+    top_equip = base_q.with_entities(OrdemServico.equipamento, func.count(OrdemServico.id).label('total'))\
+        .group_by(OrdemServico.equipamento).order_by(func.count(OrdemServico.id).desc()).limit(5).all()
+
     usuarios = User.query.order_by(User.is_admin.desc(), User.nome_completo).all()
     return render_template('dashboard.html', ordens=ordens, estoque=estoque,
                            stats=stats, q=q, status_filter=status_filter,
@@ -413,7 +426,17 @@ def dashboard():
 @login_required
 def nova_os():
     tabela = TabelaPreco.query.all()
+    filiais = Filial.query.filter_by(ativa=True).all()
     if request.method == 'POST':
+        # Determine filial_id: admin/gerente/supervisor choose; técnico uses own filial
+        if current_user.is_admin or current_user.is_gerente:
+            filial_id = request.form.get('filial_id') or None
+            filial_id = int(filial_id) if filial_id else None
+        elif current_user.is_supervisor:
+            filial_id = request.form.get('filial_id') or None
+            filial_id = int(filial_id) if filial_id else None
+        else:
+            filial_id = current_user.filial_id
         nova = OrdemServico(
             status=request.form.get('status', 'Aberta'),
             tipo_pessoa=request.form.get('tipo_pessoa', 'PF'),
@@ -441,6 +464,7 @@ def nova_os():
             tipo_servico=request.form.get('tipo_servico'),
             valor=request.form.get('valor'),
             tecnico=current_user.nome_completo,
+            filial_id=filial_id,
         )
         db.session.add(nova)
         db.session.flush()
@@ -458,7 +482,7 @@ def nova_os():
         db.session.commit()
         flash('Ordem de Serviço criada com sucesso!', 'success')
         return redirect(url_for('ver_os', id=nova.id))
-    return render_template('nova_os.html', tabela=tabela)
+    return render_template('nova_os.html', tabela=tabela, filiais=filiais)
 
 @app.route('/os/<int:id>/editar', methods=['GET', 'POST'])
 @login_required
