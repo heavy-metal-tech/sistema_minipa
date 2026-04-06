@@ -191,7 +191,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
     <div class="sidebar-user">
       <div class="avatar">{{ current_user.nome_completo[0].upper() if current_user.nome_completo else 'U' }}</div>
       <div class="sidebar-user-info">
-        <small>{{ 'Administrador' if current_user.is_admin else ('Gerente' if current_user.is_gerente else 'Técnico') }}</small>
+        <small>{{ 'Administrador' if current_user.is_admin else ('Gerente' if current_user.is_gerente else ('Supervisor' if current_user.is_supervisor else 'Técnico')) }}</small>
         <span>{{ current_user.nome_completo }}</span>
       </div>
     </div>

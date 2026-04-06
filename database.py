@@ -4,6 +4,12 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
+# Many-to-many: supervisor ↔ autorizadas
+supervisor_autorizadas = db.Table('supervisor_autorizadas',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('filial_id', db.Integer, db.ForeignKey('filial.id'), primary_key=True)
+)
+
 class Filial(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(150), nullable=False)
@@ -18,9 +24,12 @@ class User(UserMixin, db.Model):
     nome_completo = db.Column(db.String(100))
     is_admin = db.Column(db.Boolean, default=False)
     is_gerente = db.Column(db.Boolean, default=False)
+    is_supervisor = db.Column(db.Boolean, default=False)
     filial_id = db.Column(db.Integer, db.ForeignKey('filial.id'), nullable=True)
     filial = db.relationship('Filial', backref='usuarios')
     must_change_password = db.Column(db.Boolean, default=False)
+    autorizadas_supervisionadas = db.relationship('Filial', secondary=supervisor_autorizadas,
+                                                  backref='supervisores')
 
 class TabelaPreco(db.Model):
     id = db.Column(db.Integer, primary_key=True)

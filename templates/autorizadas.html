@@ -71,7 +71,7 @@
 
     <!-- Vincular usuário a autorizada -->
     <div class="card">
-      <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Vincular Usuário à Autorizada</h2>
+      <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Vincular Técnico à Autorizada</h2>
       <p style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.5;">
         Cada técnico deve ser vinculado a uma autorizada. Ele só poderá ver as OS da sua autorizada.
         Admins sem autorizada veem tudo.
@@ -114,6 +114,7 @@
               <td>
                 {% if u.is_admin %}<span class="badge" style="background:#fef3c7;color:#92400e;">Admin</span>
                 {% elif u.is_gerente %}<span class="badge" style="background:#ede9fe;color:#5b21b6;">Gerente</span>
+                {% elif u.is_supervisor %}<span class="badge" style="background:#fef9c3;color:#854d0e;">Supervisor</span>
                 {% else %}<span class="badge" style="background:#e0f0ff;color:#0077c8;">Técnico</span>{% endif %}
               </td>
               <td style="color:#6b7280;">{{ u.filial.nome if u.filial else '— todas —' }}</td>
@@ -124,5 +125,75 @@
       </div>
     </div>
   </div>
+
+  <!-- Supervisores -->
+  <div class="card">
+    <h2 style="font-size:15px;font-weight:600;margin-bottom:6px;">Supervisores por Região</h2>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:20px;">Cada supervisor pode ver as OS de múltiplas autorizadas da sua região.</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+
+      <!-- Vincular supervisor -->
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:12px;">Definir Autorizadas do Supervisor</div>
+        <form method="POST">
+          <input type="hidden" name="action" value="vincular_supervisor">
+          <div class="form-group">
+            <label class="form-label">Supervisor</label>
+            <select name="supervisor_id" class="form-control" required>
+              <option value="">— Selecione um supervisor —</option>
+              {% for s in supervisores %}
+                <option value="{{ s.id }}">{{ s.nome_completo }} ({{ s.username }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Autorizadas da Região (selecione uma ou mais)</label>
+            <div style="border:1.5px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+              {% for f in filiais %}
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                <input type="checkbox" name="supervisor_filiais[]" value="{{ f.id }}"
+                  style="width:16px;height:16px;cursor:pointer;">
+                {{ f.nome }} — {{ f.cidade or '?' }}/{{ f.estado or '?' }}
+              </label>
+              {% else %}
+              <span style="color:#9ca3af;font-size:13px;">Nenhuma autorizada cadastrada.</span>
+              {% endfor %}
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Salvar Regiões do Supervisor</button>
+        </form>
+      </div>
+
+      <!-- Tabela de supervisores -->
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:12px;">Supervisores Cadastrados</div>
+        {% if supervisores %}
+        <table>
+          <thead><tr><th>Supervisor</th><th>Autorizadas da Região</th></tr></thead>
+          <tbody>
+            {% for s in supervisores %}
+            <tr>
+              <td><strong>{{ s.nome_completo }}</strong><br><span style="color:#9ca3af;font-size:11px;">{{ s.username }}</span></td>
+              <td>
+                {% if s.autorizadas_supervisionadas %}
+                  {% for f in s.autorizadas_supervisionadas %}
+                    <span class="badge" style="background:#e0f0ff;color:#0077c8;margin:2px;">{{ f.nome }}</span>
+                  {% endfor %}
+                {% else %}
+                  <span style="color:#9ca3af;font-size:12px;">Nenhuma atribuída</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p style="color:#9ca3af;font-size:13px;">Nenhum supervisor cadastrado ainda. Crie um usuário com cargo Supervisor no Dashboard.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}

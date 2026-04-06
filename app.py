@@ -15,7 +15,7 @@ from reportlab.lib import colors
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
-from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial
+from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial, supervisor_autorizadas
 
 app = Flask(__name__)
 _secret = os.environ.get('SECRET_KEY')
@@ -359,8 +359,12 @@ def dashboard():
     q = request.args.get('q', '')
     status_filter = request.args.get('status', '')
     query = OrdemServico.query
-    # Multi-filial: admin/gerente sem filial vê tudo, outros só veem sua filial
-    if not current_user.is_admin and current_user.filial_id:
+    if current_user.is_admin or current_user.is_gerente:
+        pass  # vê tudo
+    elif current_user.is_supervisor:
+        ids = [f.id for f in current_user.autorizadas_supervisionadas]
+        query = query.filter(OrdemServico.filial_id.in_(ids)) if ids else query.filter(db.false())
+    elif current_user.filial_id:
         query = query.filter_by(filial_id=current_user.filial_id)
     if q:
         query = query.filter(
@@ -594,7 +598,9 @@ def novo_tecnico():
             password=generate_password_hash(request.form.get('password')),
             nome_completo=request.form.get('nome'),
             is_admin=(cargo == 'admin') and current_user.is_admin,
-            is_gerente=(cargo == 'gerente')
+            is_gerente=(cargo == 'gerente'),
+            is_supervisor=(cargo == 'supervisor'),
+            must_change_password=True
         )
         db.session.add(u)
         db.session.commit()
@@ -624,10 +630,17 @@ def autorizadas():
             if user:
                 user.filial_id = int(filial_id) if filial_id else None
             flash('Usuário vinculado!', 'success')
+        elif action == 'vincular_supervisor':
+            user = User.query.get(int(request.form.get('supervisor_id')))
+            filial_ids = request.form.getlist('supervisor_filiais[]')
+            if user and user.is_supervisor:
+                user.autorizadas_supervisionadas = [Filial.query.get(int(fid)) for fid in filial_ids if fid]
+            flash('Supervisor atualizado!', 'success')
         db.session.commit()
     lista = Filial.query.all()
     usuarios = User.query.all()
-    return render_template('autorizadas.html', filiais=lista, usuarios=usuarios)
+    supervisores = User.query.filter_by(is_supervisor=True).all()
+    return render_template('autorizadas.html', filiais=lista, usuarios=usuarios, supervisores=supervisores)
 
 @app.route('/logout')
 def logout():
@@ -648,6 +661,7 @@ with app.app_context():
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS filial_id INTEGER',
         'ALTER TABLE ordem_servico ADD COLUMN IF NOT EXISTS filial_id INTEGER',
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE',
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_supervisor BOOLEAN DEFAULT FALSE',
     ]:
         try:
             with db.engine.connect() as conn:
