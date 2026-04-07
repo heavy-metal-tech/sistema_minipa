@@ -30,6 +30,10 @@ if _db_url.startswith('postgres://'):
     _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,       # testa conexão antes de usar
+    'pool_recycle': 280,         # recicla conexões a cada ~5 min (antes do Render fechar)
+}
 
 # E-mail config (edite conforme seu servidor SMTP)
 EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
@@ -471,7 +475,12 @@ def nova_os():
             filial_id=filial_id,
         )
         db.session.add(nova)
-        db.session.flush()
+        try:
+            db.session.flush()
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao criar OS: {str(e)}', 'error')
+            return render_template('nova_os.html', tabela=tabela, filiais=filiais)
         # Peças
         codigos = request.form.getlist('peca_codigo[]')
         descricoes = request.form.getlist('peca_descricao[]')
@@ -483,9 +492,14 @@ def nova_os():
                               descricao=descricoes[i], quantidade=int(quantidades[i] or 1),
                               observacoes=obs_list[i])
                 db.session.add(peca)
-        db.session.commit()
-        flash('Ordem de Serviço criada com sucesso!', 'success')
-        return redirect(url_for('ver_os', id=nova.id))
+        try:
+            db.session.commit()
+            flash('Ordem de Serviço criada com sucesso!', 'success')
+            return redirect(url_for('ver_os', id=nova.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao salvar OS: {str(e)}', 'error')
+            return render_template('nova_os.html', tabela=tabela, filiais=filiais)
     return render_template('nova_os.html', tabela=tabela, filiais=filiais)
 
 @app.route('/os/<int:id>/editar', methods=['GET', 'POST'])
@@ -551,11 +565,16 @@ def atualizar_status(id):
 @app.route('/estoque/add', methods=['POST'])
 @login_required
 def add_estoque():
-    novo = Estoque(componente=request.form.get('componente'),
-                   quantidade=int(request.form.get('quantidade', 0)),
-                   posicao=request.form.get('posicao'))
-    db.session.add(novo)
-    db.session.commit()
+    try:
+        novo = Estoque(componente=request.form.get('componente'),
+                       quantidade=int(request.form.get('quantidade', 0)),
+                       posicao=request.form.get('posicao'))
+        db.session.add(novo)
+        db.session.commit()
+        flash('Item adicionado ao estoque.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao adicionar item: {str(e)}', 'error')
     return redirect(url_for('dashboard'))
 
 @app.route('/os/<int:id>/delete', methods=['POST'])
