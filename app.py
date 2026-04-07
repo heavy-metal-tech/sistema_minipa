@@ -324,7 +324,7 @@ def api_tabela_precos():
 @limiter.limit("5 per minute")
 def login():
     if request.method == 'POST':
-        username = request.form.get('username', '').strip()[:50].lower()
+        username = request.form.get('username', '').strip()[:50]
         password = request.form.get('password', '')[:200]
         if not username or not password:
             flash('Preencha usuário e senha.', 'error')
@@ -622,7 +622,7 @@ def novo_tecnico():
     if current_user.is_admin or current_user.is_gerente:
         cargo = request.form.get('cargo', 'tecnico')
         u = User(
-            username=request.form.get('username', '').strip().lower(),
+            username=request.form.get('username', '').strip(),
             password=generate_password_hash(request.form.get('password')),
             nome_completo=request.form.get('nome'),
             is_admin=(cargo == 'admin') and current_user.is_admin,
