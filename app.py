@@ -92,8 +92,11 @@ STATUS_COLORS = {
     'Aberta': '#2563eb',
     'Em análise': '#d97706',
     'Aguardando peça': '#7c3aed',
+    'Peça enviada': '#0891b2',
+    'Manutenção concluída': '#059669',
+    'Equipamento retirado pelo cliente': '#65a30d',
     'Concluída': '#16a34a',
-    'Enviada para fabricante': '#0891b2',
+    'Enviada para fabricante': '#6b7280',
 }
 
 def draw_pdf_os(os_data):
@@ -415,7 +418,7 @@ def dashboard():
         os_por_mes.append(count)
 
     # Gráfico por status — scoped
-    status_labels = ['Aberta', 'Em análise', 'Aguardando peça', 'Concluída', 'Enviada para fabricante']
+    status_labels = ['Aberta', 'Em análise', 'Aguardando peça', 'Peça enviada', 'Manutenção concluída', 'Equipamento retirado pelo cliente', 'Concluída', 'Enviada para fabricante']
     status_data = [base_q.filter_by(status=s).count() for s in status_labels]
 
     # Top equipamentos — scoped

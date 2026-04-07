@@ -38,7 +38,7 @@
     <span style="font-size:13px;font-weight:600;">Alterar Status:</span>
     <form method="POST" action="{{ url_for('atualizar_status', id=os.id) }}" style="display:flex;gap:8px;align-items:center;">
       <select name="status" class="form-control" style="width:220px;padding:8px 12px;">
-        {% for s in ['Aberta','Em análise','Aguardando peça','Concluída','Enviada para fabricante'] %}
+        {% for s in ['Aberta','Em análise','Aguardando peça','Peça enviada','Manutenção concluída','Equipamento retirado pelo cliente','Concluída','Enviada para fabricante'] %}
           <option value="{{ s }}" {{ 'selected' if os.status == s }}>{{ s }}</option>
         {% endfor %}
       </select>
