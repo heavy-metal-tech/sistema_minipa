@@ -620,9 +620,16 @@ def tabela_precos():
 @login_required
 def novo_tecnico():
     if current_user.is_admin or current_user.is_gerente:
+        username = request.form.get('username', '').strip()
+        if not username:
+            flash('Username é obrigatório.', 'error')
+            return redirect(url_for('dashboard'))
+        if User.query.filter(db.func.lower(User.username) == username.lower()).first():
+            flash(f'Username "{username}" já existe. Escolha outro.', 'error')
+            return redirect(url_for('dashboard'))
         cargo = request.form.get('cargo', 'tecnico')
         u = User(
-            username=request.form.get('username', '').strip(),
+            username=username,
             password=generate_password_hash(request.form.get('password')),
             nome_completo=request.form.get('nome'),
             is_admin=(cargo == 'admin') and current_user.is_admin,
@@ -631,8 +638,12 @@ def novo_tecnico():
             must_change_password=True
         )
         db.session.add(u)
-        db.session.commit()
-        flash(f'Usuário {u.nome_completo} cadastrado com sucesso!', 'success')
+        try:
+            db.session.commit()
+            flash(f'Usuário {u.nome_completo} cadastrado com sucesso!', 'success')
+        except Exception:
+            db.session.rollback()
+            flash('Erro ao cadastrar usuário. Verifique se o username já existe.', 'error')
     return redirect(url_for('dashboard'))
 
 @app.route('/autorizadas', methods=['GET', 'POST'])
