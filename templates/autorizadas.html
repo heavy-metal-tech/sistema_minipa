@@ -131,7 +131,19 @@
                 {% elif u.is_supervisor %}<span class="badge" style="background:#fef9c3;color:#854d0e;">Supervisor</span>
                 {% else %}<span class="badge" style="background:#e0f0ff;color:#0077c8;">Técnico</span>{% endif %}
               </td>
-              <td style="color:#6b7280;">{{ u.filial.nome if u.filial else '— todas —' }}</td>
+              <td style="color:#6b7280;">
+                {% if u.is_supervisor %}
+                  {% if u.autorizadas_supervisionadas %}
+                    {% for f in u.autorizadas_supervisionadas %}
+                      <span class="badge" style="background:#e0f0ff;color:#0077c8;margin:2px 2px 2px 0;">{{ f.nome }}</span>
+                    {% endfor %}
+                  {% else %}
+                    — nenhuma —
+                  {% endif %}
+                {% else %}
+                  {{ u.filial.nome if u.filial else '— todas —' }}
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>
