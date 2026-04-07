@@ -15,6 +15,7 @@ class Filial(db.Model):
     nome = db.Column(db.String(150), nullable=False)
     cidade = db.Column(db.String(100))
     estado = db.Column(db.String(2))
+    email = db.Column(db.String(150))
     ativa = db.Column(db.Boolean, default=True)
 
 class User(UserMixin, db.Model):

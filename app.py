@@ -282,11 +282,13 @@ def pdf_estoque():
 @login_required
 def enviar_email(id):
     os_data = OrdemServico.query.get_or_404(id)
+    # Usa o email da autorizada se cadastrado, caso contrário usa o email global da Minipa
+    destino = (os_data.filial.email if os_data.filial and os_data.filial.email else None) or EMAIL_MINIPA
     try:
         pdf_buffer = draw_pdf_os(os_data)
         msg = MIMEMultipart()
         msg['From'] = EMAIL_USER
-        msg['To'] = EMAIL_MINIPA
+        msg['To'] = destino
         msg['Subject'] = f"Solicitação de peças – OS nº {os_data.id:05d}"
         body = (f"Prezados,\n\nInformamos a abertura da Ordem de Serviço nº {os_data.id:05d} "
                 f"referente ao equipamento modelo {os_data.equipamento} (S/N: {os_data.serie}).\n"
@@ -643,13 +645,19 @@ def autorizadas():
         if action == 'add':
             f = Filial(nome=request.form.get('nome'),
                        cidade=request.form.get('cidade'),
-                       estado=request.form.get('estado'))
+                       estado=request.form.get('estado'),
+                       email=request.form.get('email') or None)
             db.session.add(f)
-            flash('Filial cadastrada!', 'success')
+            flash('Autorizada cadastrada!', 'success')
+        elif action == 'set_email':
+            f = Filial.query.get(int(request.form.get('id')))
+            if f:
+                f.email = request.form.get('email') or None
+            flash('E-mail atualizado!', 'success')
         elif action == 'delete':
             f = Filial.query.get(int(request.form.get('id')))
             if f: db.session.delete(f)
-            flash('Filial removida!', 'success')
+            flash('Autorizada removida!', 'success')
         elif action == 'vincular':
             user = User.query.get(int(request.form.get('user_id')))
             filial_id = request.form.get('filial_id')
@@ -688,6 +696,7 @@ with app.app_context():
         'ALTER TABLE ordem_servico ADD COLUMN IF NOT EXISTS filial_id INTEGER',
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE',
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_supervisor BOOLEAN DEFAULT FALSE',
+        'ALTER TABLE filial ADD COLUMN IF NOT EXISTS email VARCHAR(150)',
     ]:
         try:
             with db.engine.connect() as conn:
