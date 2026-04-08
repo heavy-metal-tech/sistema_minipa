@@ -15,7 +15,7 @@ from reportlab.lib import colors
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
-from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial, supervisor_autorizadas
+from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial, supervisor_autorizadas, LogOS
 
 app = Flask(__name__)
 _secret = os.environ.get('SECRET_KEY')
@@ -495,6 +495,8 @@ def nova_os():
                               descricao=descricoes[i], quantidade=int(quantidades[i] or 1),
                               observacoes=obs_list[i])
                 db.session.add(peca)
+        db.session.add(LogOS(os_id=nova.id, usuario=current_user.nome_completo,
+                              tipo='criacao', descricao=f'OS criada com status "{nova.status}"'))
         try:
             db.session.commit()
             flash('Ordem de Serviço criada com sucesso!', 'success')
@@ -511,7 +513,9 @@ def editar_os(id):
     os_data = OrdemServico.query.get_or_404(id)
     tabela = TabelaPreco.query.all()
     if request.method == 'POST':
-        os_data.status = request.form.get('status', os_data.status)
+        status_anterior = os_data.status
+        novo_status = request.form.get('status', os_data.status)
+        os_data.status = novo_status
         os_data.tipo_pessoa = request.form.get('tipo_pessoa', os_data.tipo_pessoa)
         os_data.cliente = request.form.get('cliente', os_data.cliente)
         os_data.cpf_cnpj = request.form.get('cpf_cnpj', os_data.cpf_cnpj)
@@ -546,6 +550,15 @@ def editar_os(id):
             fotos_existentes = json.loads(os_data.fotos_defeito or '[]')
             fotos_existentes.extend(novas_fotos)
             os_data.fotos_defeito = json.dumps(fotos_existentes)
+        if novo_status != status_anterior:
+            tipo = 'peca_solicitada' if novo_status == 'Aguardando peça' else \
+                   'peca_enviada' if novo_status == 'Peça enviada' else 'status'
+            db.session.add(LogOS(os_id=os_data.id, usuario=current_user.nome_completo,
+                                 tipo=tipo,
+                                 descricao=f'Status alterado: "{status_anterior}" → "{novo_status}"'))
+        else:
+            db.session.add(LogOS(os_id=os_data.id, usuario=current_user.nome_completo,
+                                 tipo='edicao', descricao='OS editada'))
         db.session.commit()
         flash('OS atualizada com sucesso!', 'success')
         return redirect(url_for('ver_os', id=id))
@@ -561,7 +574,18 @@ def ver_os(id):
 @login_required
 def atualizar_status(id):
     os_data = OrdemServico.query.get_or_404(id)
-    os_data.status = request.form.get('status')
+    status_anterior = os_data.status
+    novo_status = request.form.get('status')
+    os_data.status = novo_status
+    # Determina o tipo do log pelo status
+    tipo = 'status'
+    if novo_status == 'Aguardando peça':
+        tipo = 'peca_solicitada'
+    elif novo_status == 'Peça enviada':
+        tipo = 'peca_enviada'
+    db.session.add(LogOS(os_id=id, usuario=current_user.nome_completo,
+                         tipo=tipo,
+                         descricao=f'Status alterado: "{status_anterior}" → "{novo_status}"'))
     db.session.commit()
     return redirect(url_for('ver_os', id=id))
 
@@ -730,6 +754,14 @@ with app.app_context():
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE',
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_supervisor BOOLEAN DEFAULT FALSE',
         'ALTER TABLE filial ADD COLUMN IF NOT EXISTS email VARCHAR(150)',
+        '''CREATE TABLE IF NOT EXISTS log_os (
+            id SERIAL PRIMARY KEY,
+            os_id INTEGER REFERENCES ordem_servico(id) ON DELETE CASCADE,
+            data TIMESTAMP DEFAULT NOW(),
+            usuario VARCHAR(100),
+            tipo VARCHAR(50),
+            descricao TEXT
+        )''',
     ]:
         try:
             with db.engine.connect() as conn:

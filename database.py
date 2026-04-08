@@ -86,6 +86,15 @@ class OrdemServico(db.Model):
     filial_id = db.Column(db.Integer, db.ForeignKey('filial.id'), nullable=True)
     filial = db.relationship('Filial', backref='ordens')
     pecas = db.relationship('PecaOS', backref='ordem', lazy=True, cascade='all, delete-orphan')
+    logs = db.relationship('LogOS', backref='ordem', lazy=True, cascade='all, delete-orphan', order_by='LogOS.data')
+
+class LogOS(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    os_id = db.Column(db.Integer, db.ForeignKey('ordem_servico.id'), nullable=False)
+    data = db.Column(db.DateTime, default=datetime.utcnow)
+    usuario = db.Column(db.String(100))
+    tipo = db.Column(db.String(50))   # 'status', 'peca_solicitada', 'peca_enviada', 'edicao'
+    descricao = db.Column(db.Text)
 
 class Estoque(db.Model):
     id = db.Column(db.Integer, primary_key=True)

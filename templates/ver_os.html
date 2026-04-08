@@ -168,5 +168,34 @@
     </div>
   </div>
 
+
+  <!-- Histórico -->
+  <div class="card" style="margin-top:20px;">
+    <div class="section-title">Histórico da OS</div>
+    {% if os.logs %}
+    <div style="display:flex;flex-direction:column;gap:0;">
+      {% for log in os.logs|sort(attribute='data') %}
+      {% set icones = {'criacao':'🆕','status':'🔄','peca_solicitada':'📦','peca_enviada':'🚚','edicao':'✏️'} %}
+      {% set cores = {'criacao':'#2563eb','peca_solicitada':'#7c3aed','peca_enviada':'#0891b2','edicao':'#d97706','status':'#6b7280'} %}
+      {% set cor_log = cores.get(log.tipo, '#6b7280') %}
+      <div style="display:flex;gap:14px;padding:12px 0;border-bottom:1px solid #f3f4f6;align-items:flex-start;">
+        <div style="width:32px;height:32px;border-radius:50%;background:{{ cor_log }}18;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">
+          {{ icones.get(log.tipo, '•') }}
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;color:#111;">{{ log.descricao }}</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:3px;">
+            {{ log.usuario }} &nbsp;·&nbsp;
+            {{ log.data.strftime('%d/%m/%Y às %H:%M') if log.data else '—' }}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p style="color:#9ca3af;font-size:13px;">Nenhum registro ainda.</p>
+    {% endif %}
+  </div>
+
 </div>
 {% endblock %}
