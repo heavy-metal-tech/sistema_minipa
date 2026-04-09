@@ -168,6 +168,23 @@ textarea.form-control { resize: vertical; min-height: 90px; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
       Nova OS
     </a>
+    {% if current_user.is_supervisor %}
+    <div class="nav-section">Minhas Autorizadas</div>
+    {% set minhas = current_user.autorizadas_supervisionadas %}
+    {% if minhas %}
+      {% for f in minhas %}
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-radius:8px;margin-bottom:2px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2" style="flex-shrink:0;"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+        <div>
+          <div style="color:rgba(255,255,255,0.85);font-size:12.5px;font-weight:500;line-height:1.3;">{{ f.nome }}</div>
+          {% if f.cidade %}<div style="color:rgba(255,255,255,0.35);font-size:10px;">{{ f.cidade }}{% if f.estado %}/{{ f.estado }}{% endif %}</div>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div style="padding:7px 12px;color:rgba(255,255,255,0.3);font-size:12px;">Nenhuma vinculada</div>
+    {% endif %}
+    {% endif %}
     <div class="nav-section">Relatórios</div>
     <a href="{{ url_for('pdf_estoque') }}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
