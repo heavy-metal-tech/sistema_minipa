@@ -237,24 +237,14 @@
 
   <!-- Serviço e Valor -->
   <div class="card" style="margin-bottom:24px;">
-    <div class="section-title">Serviço e Valor</div>
-    <div class="form-row col-2">
-      <div class="form-group">
-        <label class="form-label">Tipo de Serviço</label>
-        <select name="tipo_servico" class="form-control" id="tipo_servico" onchange="preencherValor()">
-          <option value="">— Selecione —</option>
-          {% for t in tabela %}
-            <option value="{{ t.tipo_servico }}" data-valor="{{ '%.2f'|format(t.valor) }}">
-              {{ t.tipo_servico }} — R$ {{ '%.2f'|format(t.valor) }}
-            </option>
-          {% endfor %}
-          <option value="outro">Outro (manual)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Valor Estimado (R$)</label>
-        <input class="form-control" name="valor" value="{{ os.valor or '' }}" id="valor_field" placeholder="0,00">
-      </div>
+    <div class="section-title">Reparo e Valor</div>
+    <div class="form-group">
+      <label class="form-label">Descrição do Serviço Realizado</label>
+      <textarea class="form-control" name="tipo_servico" rows="3" placeholder="Descreva o que foi feito...">{{ os.tipo_servico or '' }}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Valor do Reparo (R$)</label>
+      <input class="form-control" name="valor" value="{{ os.valor or '' }}" placeholder="0,00">
     </div>
   </div>
 
@@ -284,14 +274,6 @@ function setGarantia(val) {
   document.getElementById('garantia_input').value = val;
   document.getElementById('btn-sim').className = val === 'Sim' ? 'active-sim' : '';
   document.getElementById('btn-nao').className = val === 'Não' ? 'active-nao' : '';
-}
-
-// Valor automático
-function preencherValor() {
-  const sel = document.getElementById('tipo_servico');
-  const opt = sel.options[sel.selectedIndex];
-  const v = opt.dataset.valor;
-  if (v) document.getElementById('valor_field').value = v.replace('.', ',');
 }
 
 // Peças

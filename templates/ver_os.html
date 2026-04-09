@@ -155,15 +155,15 @@
 
   <!-- Serviço -->
   <div class="card" style="margin-top:20px;">
-    <div class="section-title">Serviço e Valor</div>
-    <div style="display:flex;gap:40px;font-size:14px;">
+    <div class="section-title">Reparo e Valor</div>
+    <div style="display:flex;flex-direction:column;gap:16px;font-size:14px;">
       <div>
-        <div style="color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Tipo de Serviço</div>
-        <div style="font-weight:600;">{{ os.tipo_servico or '—' }}</div>
+        <div style="color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Descrição do Serviço Realizado</div>
+        <div style="font-weight:500;white-space:pre-wrap;">{{ os.tipo_servico or '—' }}</div>
       </div>
       <div>
-        <div style="color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Valor Estimado</div>
-        <div style="font-size:22px;font-weight:700;color:#0d2d6b;">R$ {{ os.valor or '0,00' }}</div>
+        <div style="color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">Valor do Reparo</div>
+        <div style="font-size:24px;font-weight:700;color:#0d2d6b;">R$ {{ os.valor or '0,00' }}</div>
       </div>
     </div>
   </div>
