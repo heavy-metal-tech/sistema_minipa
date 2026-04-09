@@ -31,8 +31,9 @@ if _db_url.startswith('postgres://'):
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_pre_ping': True,       # testa conexão antes de usar
-    'pool_recycle': 280,         # recicla conexões a cada ~5 min (antes do Render fechar)
+    'pool_pre_ping': True,
+    'pool_recycle': 600,
+    'connect_args': {'connect_timeout': 10},
 }
 
 # E-mail config (edite conforme seu servidor SMTP)
@@ -748,12 +749,10 @@ def logout():
 
 # ── Init DB ───────────────────────────────────────────────────────────────────
 
-with app.app_context():
+def _init_db():
+    import time
     from sqlalchemy import text
-    # Primeiro cria todas as tabelas novas (incluindo filial)
-    db.create_all()
-    # Depois adiciona colunas que podem não existir
-    for sql in [
+    migrations = [
         'ALTER TABLE ordem_servico ADD COLUMN IF NOT EXISTS fotos_defeito TEXT',
         'ALTER TABLE peca_os ADD COLUMN IF NOT EXISTS foto VARCHAR(300)',
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_gerente BOOLEAN DEFAULT FALSE',
@@ -770,29 +769,41 @@ with app.app_context():
             tipo VARCHAR(50),
             descricao TEXT
         )''',
-    ]:
+    ]
+    for attempt in range(5):
         try:
+            db.create_all()
             with db.engine.connect() as conn:
-                conn.execute(text(sql))
+                for i, sql in enumerate(migrations):
+                    try:
+                        conn.execute(text(f"SAVEPOINT m{i}"))
+                        conn.execute(text(sql))
+                        conn.execute(text(f"RELEASE SAVEPOINT m{i}"))
+                    except Exception:
+                        try:
+                            conn.execute(text(f"ROLLBACK TO SAVEPOINT m{i}"))
+                        except Exception:
+                            pass
                 conn.commit()
-        except Exception:
-            pass
-    if not User.query.filter_by(username='will').first():
-        db.session.add(User(username='will',
-                            password=generate_password_hash('123', method='pbkdf2:sha256'),
-                            nome_completo='Will Admin', is_admin=True,
-                            must_change_password=True))
-        db.session.commit()
-    # Force must_change_password for any user still using default password '123'
-    for u in User.query.all():
-        if check_password_hash(u.password, '123') and not u.must_change_password:
-            u.must_change_password = True
-    db.session.commit()
-    if TabelaPreco.query.count() == 0:
-        for tipo, valor in [('Reparo com PCI', 180.00), ('Reparo Geral', 120.00),
-                            ('Calibração', 90.00), ('Diagnóstico', 60.00)]:
-            db.session.add(TabelaPreco(tipo_servico=tipo, valor=valor))
-        db.session.commit()
+            if not User.query.filter_by(username='will').first():
+                db.session.add(User(username='will',
+                                    password=generate_password_hash('123', method='pbkdf2:sha256'),
+                                    nome_completo='Will Admin', is_admin=True,
+                                    must_change_password=True))
+                db.session.commit()
+            if TabelaPreco.query.count() == 0:
+                for tipo, valor in [('Reparo com PCI', 180.00), ('Reparo Geral', 120.00),
+                                    ('Calibração', 90.00), ('Diagnóstico', 60.00)]:
+                    db.session.add(TabelaPreco(tipo_servico=tipo, valor=valor))
+                db.session.commit()
+            return  # sucesso
+        except Exception as e:
+            print(f'DB init attempt {attempt + 1} failed: {e}')
+            if attempt < 4:
+                time.sleep(3)
+
+with app.app_context():
+    _init_db()
 
 if __name__ == '__main__':
     app.run(debug=True)
