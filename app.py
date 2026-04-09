@@ -742,6 +742,10 @@ def logs_global():
     logs = LogOS.query.order_by(LogOS.data.desc()).limit(300).all()
     return render_template('logs.html', logs=logs)
 
+@app.route('/ping')
+def ping():
+    return 'ok', 200
+
 @app.route('/logout')
 def logout():
     logout_user()
