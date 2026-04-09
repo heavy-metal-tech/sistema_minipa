@@ -336,7 +336,7 @@ def login():
         if not username or not password:
             flash('Preencha usuário e senha.', 'error')
             return render_template('login.html')
-        user = User.query.filter(db.func.lower(User.username) == username).first()
+        user = User.query.filter(db.func.lower(User.username) == username.lower()).first()
         if user and check_password_hash(user.password, password):
             login_user(user)
             return redirect(url_for('dashboard'))
