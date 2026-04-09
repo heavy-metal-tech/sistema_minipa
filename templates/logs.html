@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}Log de Atividades — Minipa OS{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>Log de Atividades</h1>
+  <div class="topbar-actions">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline">← Voltar</a>
+  </div>
+</div>
+<div class="content">
+  <div class="card">
+    {% set icones = {'criacao':'🆕','status':'🔄','peca_solicitada':'📦','peca_enviada':'🚚','edicao':'✏️'} %}
+    {% set cores = {'criacao':'#2563eb','peca_solicitada':'#7c3aed','peca_enviada':'#0891b2','edicao':'#d97706','status':'#6b7280'} %}
+    {% if logs %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Data / Hora</th>
+            <th>OS</th>
+            <th>Evento</th>
+            <th>Descrição</th>
+            <th>Usuário</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs %}
+          {% set cor = cores.get(log.tipo, '#6b7280') %}
+          <tr>
+            <td style="white-space:nowrap;color:#6b7280;font-size:12px;">
+              {{ log.data.strftime('%d/%m/%Y %H:%M') if log.data else '—' }}
+            </td>
+            <td>
+              <a href="{{ url_for('ver_os', id=log.os_id) }}" style="font-family:monospace;color:#2563eb;font-weight:600;">
+                #{{ '%05d' % log.os_id }}
+              </a>
+            </td>
+            <td>
+              <span class="badge" style="background:{{ cor }}18;color:{{ cor }};">
+                {{ icones.get(log.tipo, '•') }} {{ log.tipo | replace('_',' ') | title }}
+              </span>
+            </td>
+            <td style="font-size:13px;">{{ log.descricao }}</td>
+            <td style="font-size:13px;color:#374151;">{{ log.usuario }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p style="color:#9ca3af;font-size:12px;margin-top:14px;">Exibindo os últimos {{ logs|length }} registros.</p>
+    {% else %}
+    <p style="color:#9ca3af;font-size:13px;">Nenhuma atividade registrada ainda.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

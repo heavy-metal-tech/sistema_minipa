@@ -733,6 +733,14 @@ def autorizadas():
     supervisores = User.query.filter_by(is_supervisor=True).all()
     return render_template('autorizadas.html', filiais=lista, usuarios=usuarios, supervisores=supervisores)
 
+@app.route('/logs')
+@login_required
+def logs_global():
+    if not (current_user.is_admin or current_user.is_gerente):
+        return redirect(url_for('dashboard'))
+    logs = LogOS.query.order_by(LogOS.data.desc()).limit(300).all()
+    return render_template('logs.html', logs=logs)
+
 @app.route('/logout')
 def logout():
     logout_user()
