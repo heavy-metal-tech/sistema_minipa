@@ -97,6 +97,17 @@ def _can_access_os(os_data):
         return os_data.filial_id in ids if ids else False
     return os_data.filial_id == current_user.filial_id
 
+STATUSES = [
+    'Aberta',
+    'Em análise',
+    'Aguardando peça',
+    'Peça enviada',
+    'Manutenção concluída',
+    'Equipamento retirado pelo cliente',
+    'Concluída',
+    'Enviada para fabricante',
+]
+
 STATUS_COLORS = {
     'Aberta': '#2563eb',
     'Em análise': '#d97706',
@@ -107,6 +118,10 @@ STATUS_COLORS = {
     'Concluída': '#16a34a',
     'Enviada para fabricante': '#6b7280',
 }
+
+@app.context_processor
+def inject_globals():
+    return {'STATUSES': STATUSES, 'STATUS_COLORS': STATUS_COLORS}
 
 def draw_pdf_os(os_data):
     buffer = io.BytesIO()
@@ -431,9 +446,6 @@ def dashboard():
     estoque = Estoque.query.all()
 
     # Stats — uma query GROUP BY em vez de N queries separadas
-    status_labels = ['Aberta', 'Em análise', 'Aguardando peça', 'Peça enviada',
-                     'Manutenção concluída', 'Equipamento retirado pelo cliente',
-                     'Concluída', 'Enviada para fabricante']
     counts_raw = base_q.with_entities(
         OrdemServico.status, func.count(OrdemServico.id)
     ).group_by(OrdemServico.status).all()
@@ -457,7 +469,7 @@ def dashboard():
         'total': sum(counts.values()),
         'faturamento': faturamento,
     }
-    status_data = [counts.get(s, 0) for s in status_labels]
+    status_data = [counts.get(s, 0) for s in STATUSES]
 
     # Gráfico OS por mês (últimos 6 meses)
     meses = []
@@ -481,9 +493,8 @@ def dashboard():
     usuarios = User.query.order_by(User.is_admin.desc(), User.nome_completo).all()
     return render_template('dashboard.html', ordens=ordens, estoque=estoque,
                            stats=stats, q=q, status_filter=status_filter,
-                           STATUS_COLORS=STATUS_COLORS,
                            meses=meses, os_por_mes=os_por_mes,
-                           status_labels=status_labels, status_data=status_data,
+                           status_data=status_data,
                            top_equip=top_equip, usuarios=usuarios)
 
 @app.route('/nova_os', methods=['GET', 'POST'])
@@ -624,7 +635,7 @@ def editar_os(id):
         db.session.commit()
         flash('OS atualizada com sucesso!', 'success')
         return redirect(url_for('ver_os', id=id))
-    return render_template('editar_os.html', os=os_data, tabela=tabela, STATUS_COLORS=STATUS_COLORS)
+    return render_template('editar_os.html', os=os_data, tabela=tabela)
 
 @app.route('/os/<int:id>')
 @login_required
@@ -633,7 +644,7 @@ def ver_os(id):
     if not _can_access_os(os_data):
         flash('Sem permissão para acessar esta OS.', 'error')
         return redirect(url_for('dashboard'))
-    return render_template('ver_os.html', os=os_data, STATUS_COLORS=STATUS_COLORS)
+    return render_template('ver_os.html', os=os_data)
 
 @app.route('/os/<int:id>/status', methods=['POST'])
 @login_required
@@ -854,6 +865,9 @@ def _init_db():
             tipo VARCHAR(50),
             descricao TEXT
         )''',
+        'CREATE INDEX IF NOT EXISTS idx_os_status ON ordem_servico(status)',
+        'CREATE INDEX IF NOT EXISTS idx_os_filial ON ordem_servico(filial_id)',
+        'CREATE INDEX IF NOT EXISTS idx_log_os_id ON log_os(os_id)',
     ]
     for attempt in range(5):
         try:

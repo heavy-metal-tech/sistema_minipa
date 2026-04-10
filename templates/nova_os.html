@@ -63,7 +63,7 @@
       <div class="form-group">
         <label class="form-label">Status</label>
         <select name="status" class="form-control">
-          {% for s in ['Aberta','Em análise','Aguardando peça','Peça enviada','Manutenção concluída','Equipamento retirado pelo cliente','Concluída','Enviada para fabricante'] %}
+          {% for s in STATUSES %}
             <option value="{{ s }}">{{ s }}</option>
           {% endfor %}
         </select>

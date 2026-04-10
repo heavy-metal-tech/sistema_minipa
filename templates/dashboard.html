@@ -117,7 +117,7 @@
         <input type="text" name="q" value="{{ q }}" placeholder="Buscar cliente, equipamento ou Nº..." class="form-control" style="width:260px;padding:8px 12px;">
         <select name="status" class="form-control" style="width:auto;padding:8px 12px;">
           <option value="">Todos os status</option>
-          {% for s in ['Aberta','Em análise','Aguardando peça','Peça enviada','Manutenção concluída','Equipamento retirado pelo cliente','Concluída','Enviada para fabricante'] %}
+          {% for s in STATUSES %}
             <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s }}</option>
           {% endfor %}
         </select>
@@ -306,7 +306,7 @@ new Chart(document.getElementById('chartMeses'), {
 });
 
 // Gráfico por status (doughnut)
-const statusLabels = {{ status_labels | tojson }};
+const statusLabels = {{ STATUSES | tojson }};
 const statusData = {{ status_data | tojson }};
 const statusColors = [blue, orange, purple, green, cyan];
 new Chart(document.getElementById('chartStatus'), {

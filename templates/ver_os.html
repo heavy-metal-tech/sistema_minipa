@@ -41,7 +41,7 @@
     <form method="POST" action="{{ url_for('atualizar_status', id=os.id) }}" style="display:flex;gap:8px;align-items:center;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <select name="status" class="form-control" style="width:220px;padding:8px 12px;">
-        {% for s in ['Aberta','Em análise','Aguardando peça','Peça enviada','Manutenção concluída','Equipamento retirado pelo cliente','Concluída','Enviada para fabricante'] %}
+        {% for s in STATUSES %}
           <option value="{{ s }}" {{ 'selected' if os.status == s }}>{{ s }}</option>
         {% endfor %}
       </select>
