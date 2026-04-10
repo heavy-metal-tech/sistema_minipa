@@ -80,6 +80,7 @@
       {% for cat, msg in messages %}<div class="alert">{{ msg }}</div>{% endfor %}
     {% endwith %}
     <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field">
         <label>Usuário</label>
         <input type="text" name="username" placeholder="Digite seu usuário" required autofocus>

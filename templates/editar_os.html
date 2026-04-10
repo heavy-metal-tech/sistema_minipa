@@ -52,6 +52,7 @@
 </div>
 <div class="content">
 <form method="POST" action="{{ url_for('editar_os', id=os.id) }}" id="os-form" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="tipo_pessoa" id="tipo_pessoa_input" value="PF">
   <input type="hidden" name="garantia" id="garantia_input" value="Não">
 

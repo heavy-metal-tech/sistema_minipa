@@ -20,6 +20,7 @@
             <td style="color:#6b7280;">{{ f.cidade or '—' }}/{{ f.estado or '—' }}</td>
             <td>
               <form method="POST" style="display:flex;gap:4px;align-items:center;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="set_email">
                 <input type="hidden" name="id" value="{{ f.id }}">
                 <input type="email" name="email" value="{{ f.email or '' }}"
@@ -37,6 +38,7 @@
             </td>
             <td>
               <form method="POST" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="id" value="{{ f.id }}">
                 <button type="submit" onclick="return confirm('Remover autorizada {{ f.nome }}?')"
@@ -54,6 +56,7 @@
       <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px;">
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:12px;">Nova Autorizada</div>
         <form method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="add">
           <div class="form-group">
             <label class="form-label">Nome da Autorizada</label>
@@ -91,6 +94,7 @@
         Admins e gerentes veem tudo.
       </p>
       <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="vincular">
         <div class="form-group">
           <label class="form-label">Usuário</label>
@@ -164,6 +168,7 @@
           <div style="font-weight:600;font-size:14px;margin-bottom:4px;">{{ s.nome_completo }}</div>
           <div style="font-size:11px;color:#9ca3af;margin-bottom:14px;">@{{ s.username }}</div>
           <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="vincular_supervisor">
             <input type="hidden" name="supervisor_id" value="{{ s.id }}">
             <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">

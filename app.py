@@ -1,8 +1,7 @@
 import os, io, smtplib, json, secrets
-import cloudinary
-import cloudinary.uploader
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
@@ -12,8 +11,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.platypus import Paragraph
-from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
 from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial, supervisor_autorizadas, LogOS
 
@@ -30,11 +27,13 @@ if _db_url.startswith('postgres://'):
     _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_pre_ping': True,
-    'pool_recycle': 600,
-    'connect_args': {'connect_timeout': 10},
-}
+if _db_url.startswith('postgresql'):
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_pre_ping': True,
+        'pool_size': 3,
+        'max_overflow': 2,
+        'connect_args': {'connect_timeout': 10},
+    }
 
 # E-mail config (edite conforme seu servidor SMTP)
 EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
@@ -44,15 +43,15 @@ EMAIL_PASS = os.environ.get('EMAIL_PASS', '')
 EMAIL_MINIPA = os.environ.get('EMAIL_MINIPA', 'assistencia@minipa.com.br')
 
 db.init_app(app)
+csrf = CSRFProtect(app)
 
 limiter = Limiter(get_remote_address, app=app, storage_uri="memory://", default_limits=[])
 
 # Jinja filter para JSON
-import json as _json
 @app.template_filter('from_json')
 def from_json_filter(value):
     try:
-        return _json.loads(value) if value else []
+        return json.loads(value) if value else []
     except:
         return []
 
@@ -333,8 +332,9 @@ def enviar_email(id):
         os_data.status = 'Enviada para fabricante'
         db.session.commit()
         flash('E-mail enviado com sucesso para a Minipa!', 'success')
-    except Exception as e:
-        flash(f'Erro ao enviar e-mail: {str(e)}', 'error')
+    except Exception:
+        app.logger.exception('Erro ao enviar e-mail OS %s', id)
+        flash('Erro ao enviar e-mail. Verifique as configurações SMTP.', 'error')
     return redirect(url_for('ver_os', id=id))
 
 # ── API ───────────────────────────────────────────────────────────────────────
@@ -502,8 +502,9 @@ def nova_os():
             db.session.flush()
         except Exception as e:
             db.session.rollback()
-            flash(f'Erro ao criar OS: {str(e)}', 'error')
-            return render_template('nova_os.html', tabela=tabela, filiais=filiais)
+            app.logger.exception('Erro ao criar OS')
+            flash('Erro ao criar OS. Tente novamente.', 'error')
+            return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=datetime.now())
         # Peças
         codigos = request.form.getlist('peca_codigo[]')
         descricoes = request.form.getlist('peca_descricao[]')
@@ -523,9 +524,10 @@ def nova_os():
             return redirect(url_for('ver_os', id=nova.id))
         except Exception as e:
             db.session.rollback()
-            flash(f'Erro ao salvar OS: {str(e)}', 'error')
-            return render_template('nova_os.html', tabela=tabela, filiais=filiais)
-    return render_template('nova_os.html', tabela=tabela, filiais=filiais)
+            app.logger.exception('Erro ao salvar OS')
+            flash('Erro ao salvar OS. Tente novamente.', 'error')
+            return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=datetime.now())
+    return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=datetime.now())
 
 @app.route('/os/<int:id>/editar', methods=['GET', 'POST'])
 @login_required
@@ -621,7 +623,8 @@ def add_estoque():
         flash('Item adicionado ao estoque.', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Erro ao adicionar item: {str(e)}', 'error')
+        app.logger.exception('Erro ao adicionar item ao estoque')
+        flash('Erro ao adicionar item.', 'error')
     return redirect(url_for('dashboard'))
 
 @app.route('/os/<int:id>/delete', methods=['POST'])
@@ -765,7 +768,8 @@ def logs_global():
 def ping():
     return 'ok', 200
 
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
+@login_required
 def logout():
     logout_user()
     return redirect(url_for('login'))

@@ -16,6 +16,7 @@
       Gerar PDF
     </a>
     <form method="POST" action="{{ url_for('enviar_email', id=os.id) }}" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-green" onclick="return confirm('Enviar OS para Minipa por e-mail?')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
         Enviar para Minipa
@@ -23,6 +24,7 @@
     </form>
     {% if current_user.is_admin or current_user.is_gerente %}
     <form method="POST" action="{{ url_for('delete_os', id=os.id) }}" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-red" onclick="return confirm('Deletar OS #{{ '%05d' % os.id }} permanentemente? Esta ação não pode ser desfeita.')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
         Deletar OS
@@ -37,6 +39,7 @@
   <div class="card" style="margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
     <span style="font-size:13px;font-weight:600;">Alterar Status:</span>
     <form method="POST" action="{{ url_for('atualizar_status', id=os.id) }}" style="display:flex;gap:8px;align-items:center;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <select name="status" class="form-control" style="width:220px;padding:8px 12px;">
         {% for s in ['Aberta','Em análise','Aguardando peça','Peça enviada','Manutenção concluída','Equipamento retirado pelo cliente','Concluída','Enviada para fabricante'] %}
           <option value="{{ s }}" {{ 'selected' if os.status == s }}>{{ s }}</option>
@@ -107,8 +110,9 @@
       {% if fotos %}
       <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;">
         {% for foto in fotos %}
-        <a href="{{ url_for('static', filename=foto) }}" target="_blank">
-          <img src="{{ url_for('static', filename=foto) }}"
+        {% set foto_url = foto if foto.startswith('http') else url_for('static', filename=foto) %}
+        <a href="{{ foto_url }}" target="_blank">
+          <img src="{{ foto_url }}"
                style="width:120px;height:90px;object-fit:cover;border-radius:8px;border:1.5px solid #dde3f0;cursor:pointer;transition:transform .15s;"
                onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'"
                title="Clique para ampliar">
@@ -136,8 +140,9 @@
           <td style="color:#6b7280;">{{ peca.observacoes or '—' }}</td>
           <td>
             {% if peca.foto %}
-            <a href="{{ url_for('static', filename=peca.foto) }}" target="_blank">
-              <img src="{{ url_for('static', filename=peca.foto) }}"
+            {% set peca_url = peca.foto if peca.foto.startswith('http') else url_for('static', filename=peca.foto) %}
+            <a href="{{ peca_url }}" target="_blank">
+              <img src="{{ peca_url }}"
                    style="width:50px;height:38px;object-fit:cover;border-radius:5px;border:1px solid #dde3f0;cursor:pointer;">
             </a>
             {% else %}

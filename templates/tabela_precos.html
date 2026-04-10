@@ -19,6 +19,7 @@
             <td style="font-weight:600;color:#0d2d6b;">R$ {{ '%.2f'|format(t.valor) }}</td>
             <td>
               <form method="POST" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="id" value="{{ t.id }}">
                 <button type="submit" class="btn btn-outline btn-sm" style="color:#d42b2b;border-color:#fecaca;"
@@ -36,6 +37,7 @@
     <div class="card">
       <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Adicionar Novo Serviço</h2>
       <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="add">
         <div class="form-group">
           <label class="form-label">Tipo de Serviço</label>
