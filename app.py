@@ -88,6 +88,15 @@ def salvar_foto(foto):
     result = cloudinary.uploader.upload(foto, folder='minipa_os')
     return result.get('secure_url')
 
+def _can_access_os(os_data):
+    """Verifica se o usuário atual tem acesso à OS (por filial)."""
+    if current_user.is_admin or current_user.is_gerente:
+        return True
+    if current_user.is_supervisor:
+        ids = [f.id for f in current_user.autorizadas_supervisionadas]
+        return os_data.filial_id in ids if ids else False
+    return os_data.filial_id == current_user.filial_id
+
 STATUS_COLORS = {
     'Aberta': '#2563eb',
     'Em análise': '#d97706',
@@ -265,6 +274,9 @@ def draw_pdf_os(os_data):
 @login_required
 def pdf_os(id):
     os_data = OrdemServico.query.get_or_404(id)
+    if not _can_access_os(os_data):
+        flash('Sem permissão.', 'error')
+        return redirect(url_for('dashboard'))
     buffer = draw_pdf_os(os_data)
     return send_file(buffer, as_attachment=True, download_name=f"OS_{os_data.id:05d}.pdf", mimetype='application/pdf')
 
@@ -308,6 +320,9 @@ def pdf_estoque():
 @login_required
 def enviar_email(id):
     os_data = OrdemServico.query.get_or_404(id)
+    if not _can_access_os(os_data):
+        flash('Sem permissão.', 'error')
+        return redirect(url_for('dashboard'))
     # Usa o email da autorizada se cadastrado, caso contrário usa o email global da Minipa
     destino = (os_data.filial.email if os_data.filial and os_data.filial.email else None) or EMAIL_MINIPA
     try:
@@ -386,9 +401,9 @@ def trocar_senha():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    from collections import defaultdict
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     from sqlalchemy import func
+    from sqlalchemy.orm import joinedload
 
     q = request.args.get('q', '')
     status_filter = request.args.get('status', '')
@@ -403,7 +418,7 @@ def dashboard():
     elif current_user.filial_id:
         base_q = base_q.filter_by(filial_id=current_user.filial_id)
 
-    # OS list with search/filter on top of base
+    # OS list with search/filter
     query = base_q
     if q:
         query = query.filter(
@@ -415,21 +430,40 @@ def dashboard():
     ordens = query.order_by(OrdemServico.id.desc()).all()
     estoque = Estoque.query.all()
 
-    # Stats scoped to base_q
-    all_visible = base_q.all()
-    stats = {
-        'abertas': base_q.filter_by(status='Aberta').count(),
-        'aguardando': base_q.filter_by(status='Aguardando peça').count(),
-        'concluidas': base_q.filter_by(status='Concluída').count(),
-        'total': base_q.count(),
-        'faturamento': sum(float(o.valor.replace(',','.')) for o in all_visible if o.valor and o.valor.replace(',','.').replace('.','',1).isdigit()),
-    }
+    # Stats — uma query GROUP BY em vez de N queries separadas
+    status_labels = ['Aberta', 'Em análise', 'Aguardando peça', 'Peça enviada',
+                     'Manutenção concluída', 'Equipamento retirado pelo cliente',
+                     'Concluída', 'Enviada para fabricante']
+    counts_raw = base_q.with_entities(
+        OrdemServico.status, func.count(OrdemServico.id)
+    ).group_by(OrdemServico.status).all()
+    counts = dict(counts_raw)
 
-    # Gráfico OS por mês (últimos 6 meses) — scoped
+    # Faturamento: carrega só a coluna valor (não todos os campos)
+    valores = base_q.with_entities(OrdemServico.valor).all()
+    faturamento = 0.0
+    for (v,) in valores:
+        if v:
+            v_clean = v.replace(',', '.').replace(' ', '')
+            try:
+                faturamento += float(v_clean)
+            except ValueError:
+                pass
+
+    stats = {
+        'abertas': counts.get('Aberta', 0),
+        'aguardando': counts.get('Aguardando peça', 0),
+        'concluidas': counts.get('Concluída', 0),
+        'total': sum(counts.values()),
+        'faturamento': faturamento,
+    }
+    status_data = [counts.get(s, 0) for s in status_labels]
+
+    # Gráfico OS por mês (últimos 6 meses)
     meses = []
     os_por_mes = []
     for i in range(5, -1, -1):
-        d = datetime.now().replace(day=1) - timedelta(days=i*28)
+        d = datetime.now().replace(day=1) - timedelta(days=i * 28)
         count = base_q.filter(
             db.extract('month', OrdemServico.data_abertura) == d.month,
             db.extract('year', OrdemServico.data_abertura) == d.year
@@ -437,13 +471,12 @@ def dashboard():
         meses.append(d.strftime('%b/%y'))
         os_por_mes.append(count)
 
-    # Gráfico por status — scoped
-    status_labels = ['Aberta', 'Em análise', 'Aguardando peça', 'Peça enviada', 'Manutenção concluída', 'Equipamento retirado pelo cliente', 'Concluída', 'Enviada para fabricante']
-    status_data = [base_q.filter_by(status=s).count() for s in status_labels]
-
-    # Top equipamentos — scoped
-    top_equip = base_q.with_entities(OrdemServico.equipamento, func.count(OrdemServico.id).label('total'))\
-        .group_by(OrdemServico.equipamento).order_by(func.count(OrdemServico.id).desc()).limit(5).all()
+    # Top equipamentos
+    top_equip = base_q.with_entities(
+        OrdemServico.equipamento, func.count(OrdemServico.id).label('total')
+    ).group_by(OrdemServico.equipamento).order_by(
+        func.count(OrdemServico.id).desc()
+    ).limit(5).all()
 
     usuarios = User.query.order_by(User.is_admin.desc(), User.nome_completo).all()
     return render_template('dashboard.html', ordens=ordens, estoque=estoque,
@@ -466,6 +499,10 @@ def nova_os():
         elif current_user.is_supervisor:
             filial_id = request.form.get('filial_id') or None
             filial_id = int(filial_id) if filial_id else None
+            allowed = [f.id for f in current_user.autorizadas_supervisionadas]
+            if filial_id and filial_id not in allowed:
+                flash('Autorizada inválida.', 'error')
+                return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=datetime.now())
         else:
             filial_id = current_user.filial_id
         nova = OrdemServico(
@@ -533,6 +570,9 @@ def nova_os():
 @login_required
 def editar_os(id):
     os_data = OrdemServico.query.get_or_404(id)
+    if not _can_access_os(os_data):
+        flash('Sem permissão para editar esta OS.', 'error')
+        return redirect(url_for('dashboard'))
     tabela = TabelaPreco.query.all()
     if request.method == 'POST':
         status_anterior = os_data.status
@@ -590,12 +630,18 @@ def editar_os(id):
 @login_required
 def ver_os(id):
     os_data = OrdemServico.query.get_or_404(id)
+    if not _can_access_os(os_data):
+        flash('Sem permissão para acessar esta OS.', 'error')
+        return redirect(url_for('dashboard'))
     return render_template('ver_os.html', os=os_data, STATUS_COLORS=STATUS_COLORS)
 
 @app.route('/os/<int:id>/status', methods=['POST'])
 @login_required
 def atualizar_status(id):
     os_data = OrdemServico.query.get_or_404(id)
+    if not _can_access_os(os_data):
+        flash('Sem permissão.', 'error')
+        return redirect(url_for('dashboard'))
     status_anterior = os_data.status
     novo_status = request.form.get('status')
     os_data.status = novo_status
@@ -614,6 +660,9 @@ def atualizar_status(id):
 @app.route('/estoque/add', methods=['POST'])
 @login_required
 def add_estoque():
+    if not (current_user.is_admin or current_user.is_gerente):
+        flash('Sem permissão para gerenciar estoque.', 'error')
+        return redirect(url_for('dashboard'))
     try:
         novo = Estoque(componente=request.form.get('componente'),
                        quantidade=int(request.form.get('quantidade', 0)),
@@ -642,6 +691,9 @@ def delete_os(id):
 @app.route('/estoque/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_estoque(id):
+    if not (current_user.is_admin or current_user.is_gerente):
+        flash('Sem permissão para gerenciar estoque.', 'error')
+        return redirect(url_for('dashboard'))
     item = Estoque.query.get_or_404(id)
     db.session.delete(item)
     db.session.commit()
@@ -752,8 +804,14 @@ def autorizadas():
             flash('Supervisor atualizado!', 'success')
         db.session.commit()
     lista = Filial.query.all()
-    usuarios = User.query.all()
-    supervisores = User.query.filter_by(is_supervisor=True).all()
+    from sqlalchemy.orm import joinedload as _jl
+    usuarios = User.query.options(
+        _jl(User.filial),
+        _jl(User.autorizadas_supervisionadas)
+    ).all()
+    supervisores = User.query.filter_by(is_supervisor=True).options(
+        _jl(User.autorizadas_supervisionadas)
+    ).all()
     return render_template('autorizadas.html', filiais=lista, usuarios=usuarios, supervisores=supervisores)
 
 @app.route('/logs')

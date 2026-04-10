@@ -49,7 +49,7 @@ class PecaOS(db.Model):
 class OrdemServico(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     data_abertura = db.Column(db.DateTime, default=datetime.utcnow)
-    status = db.Column(db.String(30), default='Aberta')
+    status = db.Column(db.String(30), default='Aberta', index=True)
 
     # Dados do Cliente
     cliente = db.Column(db.String(150))           # Nome / Razão Social
@@ -83,14 +83,14 @@ class OrdemServico(db.Model):
     valor = db.Column(db.String(20))
 
     tecnico = db.Column(db.String(100))
-    filial_id = db.Column(db.Integer, db.ForeignKey('filial.id'), nullable=True)
+    filial_id = db.Column(db.Integer, db.ForeignKey('filial.id'), nullable=True, index=True)
     filial = db.relationship('Filial', backref='ordens')
     pecas = db.relationship('PecaOS', backref='ordem', lazy=True, cascade='all, delete-orphan')
     logs = db.relationship('LogOS', backref='ordem', lazy=True, cascade='all, delete-orphan', order_by='LogOS.data')
 
 class LogOS(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    os_id = db.Column(db.Integer, db.ForeignKey('ordem_servico.id'), nullable=False)
+    os_id = db.Column(db.Integer, db.ForeignKey('ordem_servico.id'), nullable=False, index=True)
     data = db.Column(db.DateTime, default=datetime.utcnow)
     usuario = db.Column(db.String(100))
     tipo = db.Column(db.String(50))   # 'status', 'peca_solicitada', 'peca_enviada', 'edicao'
