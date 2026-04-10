@@ -224,8 +224,27 @@ def draw_pdf_os(os_data):
 
     # Serviço e Valor
     section("Serviço e Valor")
-    row2("Tipo de Serviço:", os_data.tipo_servico, "Valor Estimado:", f"R$ {os_data.valor or '0,00'}")
-    row("Técnico Responsável:", os_data.tecnico)
+    row2("Valor Estimado:", f"R$ {os_data.valor or '0,00'}", "Técnico:", os_data.tecnico)
+    p.setFont("Helvetica-Bold", 9)
+    p.setFillColor(colors.HexColor('#374151'))
+    p.drawString(40, y, "Descrição do Serviço:")
+    y -= 13
+    p.setFont("Helvetica", 9)
+    p.setFillColor(colors.black)
+    servico_text = (os_data.tipo_servico or '—').replace('\r', '')
+    for line in servico_text.split('\n')[:6]:
+        words = line.split()
+        cur = ''
+        for word in words:
+            if len(cur + ' ' + word) > 90:
+                p.drawString(50, y, cur.strip())
+                y -= 12
+                cur = word
+            else:
+                cur += ' ' + word
+        if cur.strip():
+            p.drawString(50, y, cur.strip())
+            y -= 12
     y -= 6
 
     # Rodapé
