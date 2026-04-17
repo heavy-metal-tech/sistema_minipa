@@ -329,7 +329,134 @@ def pdf_estoque():
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name="estoque_minipa.pdf", mimetype='application/pdf')
 
-# ── Envio de E-mail ───────────────────────────────────────────────────────────
+def _draw_pecas_por_autorizada(filial_id=None):
+    """Gera PDF de peças solicitadas agrupadas por autorizada. Se filial_id, apenas aquela."""
+    from sqlalchemy.orm import joinedload as _jl
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    W, H = A4
+    BLUE = (0.05, 0.28, 0.63)
+
+    def cabecalho_pagina():
+        p.setFillColorRGB(*BLUE)
+        p.rect(0, H - 70, W, 70, fill=1, stroke=0)
+        p.setFillColor(colors.white)
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(40, H - 38, "RELATÓRIO DE PEÇAS SOLICITADAS POR AUTORIZADA")
+        p.setFont("Helvetica", 9)
+        p.drawString(40, H - 56, f"Gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')}")
+        p.setFillColor(colors.black)
+        return H - 90
+
+    if filial_id:
+        filiais = Filial.query.filter_by(id=filial_id).all()
+    else:
+        filiais = Filial.query.order_by(Filial.nome).all()
+
+    y = cabecalho_pagina()
+
+    for filial in filiais:
+        # busca OS desta filial que têm peças
+        ordens = (OrdemServico.query
+                  .filter_by(filial_id=filial.id)
+                  .options(_jl(OrdemServico.pecas))
+                  .all())
+        pecas_encontradas = [peca for os_ in ordens for peca in os_.pecas]
+        if not pecas_encontradas:
+            continue
+
+        # Cabeçalho da autorizada
+        if y < 140:
+            p.showPage()
+            y = cabecalho_pagina()
+        p.setFillColorRGB(*BLUE)
+        p.rect(30, y - 4, W - 60, 22, fill=1, stroke=0)
+        p.setFillColor(colors.white)
+        p.setFont("Helvetica-Bold", 10)
+        loc = f" — {filial.cidade}/{filial.estado}" if filial.cidade else ""
+        p.drawString(36, y + 4, f"{filial.nome}{loc}")
+        p.setFillColor(colors.black)
+        y -= 28
+
+        # Header da tabela
+        p.setFont("Helvetica-Bold", 8)
+        p.setFillColorRGB(0.9, 0.9, 0.9)
+        p.rect(30, y - 2, W - 60, 16, fill=1, stroke=0)
+        p.setFillColor(colors.black)
+        p.drawString(34, y + 4,  "OS#")
+        p.drawString(80, y + 4,  "Equipamento")
+        p.drawString(220, y + 4, "Cód. Peça")
+        p.drawString(300, y + 4, "Descrição")
+        p.drawString(490, y + 4, "Qtd")
+        y -= 18
+
+        p.setFont("Helvetica", 8)
+        for os_ in ordens:
+            for peca in os_.pecas:
+                if y < 50:
+                    p.showPage()
+                    y = cabecalho_pagina()
+                    p.setFont("Helvetica", 8)
+                p.drawString(34,  y, f"{os_.id:05d}")
+                p.drawString(80,  y, (os_.equipamento or '')[:22])
+                p.drawString(220, y, (peca.codigo or '—')[:12])
+                desc = (peca.descricao or '—')[:28]
+                p.drawString(300, y, desc)
+                p.drawString(490, y, str(peca.quantidade))
+                y -= 13
+        y -= 8
+
+    if y == H - 90:
+        p.setFont("Helvetica", 11)
+        p.setFillColorRGB(0.6, 0.6, 0.6)
+        p.drawCentredString(W / 2, H / 2, "Nenhuma peça solicitada encontrada.")
+        p.setFillColor(colors.black)
+
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return buffer
+
+@app.route('/relatorio/pecas_por_autorizada')
+@login_required
+def pdf_pecas_autorizada():
+    if not (current_user.is_admin or current_user.is_gerente):
+        flash('Sem permissão.', 'error')
+        return redirect(url_for('dashboard'))
+    buf = _draw_pecas_por_autorizada()
+    return send_file(buf, as_attachment=True,
+                     download_name="pecas_por_autorizada.pdf", mimetype='application/pdf')
+
+@app.route('/relatorio/pecas_por_autorizada/email', methods=['POST'])
+@login_required
+def email_pecas_autorizada():
+    if not (current_user.is_admin or current_user.is_gerente):
+        flash('Sem permissão.', 'error')
+        return redirect(url_for('dashboard'))
+    DESTINO = 'wfmalcato@minipa.com.br'
+    try:
+        buf = _draw_pecas_por_autorizada()
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_USER
+        msg['To'] = DESTINO
+        msg['Subject'] = f"Relatório de Peças por Autorizada — {datetime.now().strftime('%d/%m/%Y')}"
+        body = (f"Prezado,\n\nSegue em anexo o relatório de peças solicitadas agrupadas por autorizada, "
+                f"gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')}.\n\n"
+                f"Atenciosamente,\n{current_user.nome_completo}\nMinipa Precision — Assistência Técnica Autorizada")
+        msg.attach(MIMEText(body, 'plain'))
+        att = MIMEApplication(buf.read(), _subtype='pdf')
+        att.add_header('Content-Disposition', 'attachment',
+                       filename=f"pecas_por_autorizada_{datetime.now().strftime('%Y%m%d')}.pdf")
+        msg.attach(att)
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_USER, EMAIL_PASS)
+            server.send_message(msg)
+        flash(f'Relatório enviado para {DESTINO}!', 'success')
+    except Exception:
+        app.logger.exception('Erro ao enviar relatório de peças')
+        flash('Erro ao enviar e-mail. Verifique as configurações SMTP.', 'error')
+    return redirect(url_for('dashboard'))
 
 @app.route('/enviar_email/<int:id>', methods=['POST'])
 @login_required
