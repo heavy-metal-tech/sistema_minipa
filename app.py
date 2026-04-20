@@ -443,10 +443,31 @@ def email_pecas_autorizada():
         msg = MIMEMultipart()
         msg['From'] = EMAIL_USER
         msg['To'] = DESTINO
-        msg['Subject'] = f"Relatório de Peças por Autorizada — {datetime.now().strftime('%d/%m/%Y')}"
-        body = (f"Prezado,\n\nSegue em anexo o relatório de peças solicitadas agrupadas por autorizada, "
-                f"gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')}.\n\n"
-                f"Atenciosamente,\n{current_user.nome_completo}\nMinipa Precision — Assistência Técnica Autorizada")
+
+        # Monta lista de autorizadas para assunto e corpo
+        if ids is not None:
+            filiais = Filial.query.filter(Filial.id.in_(ids)).order_by(Filial.nome).all()
+        else:
+            filiais = Filial.query.order_by(Filial.nome).all()
+        nomes_filiais = ', '.join(f.nome for f in filiais) if filiais else 'Todas'
+
+        msg['Subject'] = f"Relatório de Peças — {nomes_filiais} — {datetime.now().strftime('%d/%m/%Y')}"
+
+        filiais_detalhe = '\n'.join(
+            f"  • {f.nome}{(' — ' + f.cidade + '/' + f.estado) if f.cidade else ''}"
+            for f in filiais
+        )
+        cargo = ('Administrador' if current_user.is_admin else
+                 'Gerente' if current_user.is_gerente else 'Supervisor')
+        body = (
+            f"Prezado William,\n\n"
+            f"Segue em anexo o relatório de peças solicitadas, gerado em "
+            f"{datetime.now().strftime('%d/%m/%Y às %H:%M')}.\n\n"
+            f"Autorizada(s) incluída(s) no relatório:\n{filiais_detalhe}\n\n"
+            f"Responsável pelo envio: {current_user.nome_completo} ({cargo})\n\n"
+            f"Atenciosamente,\n{current_user.nome_completo}\n"
+            f"Minipa Precision — Assistência Técnica Autorizada"
+        )
         msg.attach(MIMEText(body, 'plain'))
         att = MIMEApplication(buf.read(), _subtype='pdf')
         att.add_header('Content-Disposition', 'attachment',
