@@ -161,7 +161,7 @@
     </div>
   </div>
 
-  {% if current_user.is_admin or current_user.is_gerente %}
+  {% if current_user.is_admin or current_user.is_gerente or current_user.is_supervisor %}
   <!-- Card Peças por Autorizada -->
   <div class="card" style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
     <div>

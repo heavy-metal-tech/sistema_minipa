@@ -329,7 +329,7 @@ def pdf_estoque():
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name="estoque_minipa.pdf", mimetype='application/pdf')
 
-def _draw_pecas_por_autorizada(filial_id=None):
+def _draw_pecas_por_autorizada(filial_id=None, filial_ids=None):
     """Gera PDF de peças solicitadas agrupadas por autorizada. Se filial_id, apenas aquela."""
     from sqlalchemy.orm import joinedload as _jl
     buffer = io.BytesIO()
@@ -350,6 +350,8 @@ def _draw_pecas_por_autorizada(filial_id=None):
 
     if filial_id:
         filiais = Filial.query.filter_by(id=filial_id).all()
+    elif filial_ids is not None:
+        filiais = Filial.query.filter(Filial.id.in_(filial_ids)).order_by(Filial.nome).all()
     else:
         filiais = Filial.query.order_by(Filial.nome).all()
 
@@ -420,22 +422,24 @@ def _draw_pecas_por_autorizada(filial_id=None):
 @app.route('/relatorio/pecas_por_autorizada')
 @login_required
 def pdf_pecas_autorizada():
-    if not (current_user.is_admin or current_user.is_gerente):
+    if not (current_user.is_admin or current_user.is_gerente or current_user.is_supervisor):
         flash('Sem permissão.', 'error')
         return redirect(url_for('dashboard'))
-    buf = _draw_pecas_por_autorizada()
+    ids = [f.id for f in current_user.autorizadas_supervisionadas] if current_user.is_supervisor else None
+    buf = _draw_pecas_por_autorizada(filial_ids=ids)
     return send_file(buf, as_attachment=True,
                      download_name="pecas_por_autorizada.pdf", mimetype='application/pdf')
 
 @app.route('/relatorio/pecas_por_autorizada/email', methods=['POST'])
 @login_required
 def email_pecas_autorizada():
-    if not (current_user.is_admin or current_user.is_gerente):
+    if not (current_user.is_admin or current_user.is_gerente or current_user.is_supervisor):
         flash('Sem permissão.', 'error')
         return redirect(url_for('dashboard'))
     DESTINO = 'wfmalcato@minipa.com.br'
     try:
-        buf = _draw_pecas_por_autorizada()
+        ids = [f.id for f in current_user.autorizadas_supervisionadas] if current_user.is_supervisor else None
+        buf = _draw_pecas_por_autorizada(filial_ids=ids)
         msg = MIMEMultipart()
         msg['From'] = EMAIL_USER
         msg['To'] = DESTINO
