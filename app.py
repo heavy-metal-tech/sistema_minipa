@@ -863,6 +863,40 @@ def delete_estoque(id):
     flash('Item removido do estoque.', 'success')
     return redirect(url_for('dashboard'))
 
+@app.route('/usuarios/editar/<int:id>', methods=['POST'])
+@login_required
+def editar_usuario(id):
+    if not (current_user.is_admin or current_user.is_gerente):
+        return redirect(url_for('dashboard'))
+    user = User.query.get_or_404(id)
+    if user.is_admin and not current_user.is_admin:
+        flash('Sem permissão para editar administradores.', 'error')
+        return redirect(url_for('dashboard'))
+    nome = request.form.get('nome', '').strip()
+    username = request.form.get('username', '').strip()
+    cargo = request.form.get('cargo', 'tecnico')
+    nova_senha = request.form.get('nova_senha', '').strip()
+    if nome:
+        user.nome_completo = nome
+    if username and username != user.username:
+        if User.query.filter(db.func.lower(User.username) == username.lower(), User.id != id).first():
+            flash(f'Username "{username}" já está em uso.', 'error')
+            return redirect(url_for('dashboard'))
+        user.username = username
+    if nova_senha:
+        if len(nova_senha) < 6:
+            flash('Senha deve ter no mínimo 6 caracteres.', 'error')
+            return redirect(url_for('dashboard'))
+        user.password = generate_password_hash(nova_senha)
+        user.must_change_password = False
+    if not (user.is_admin and not current_user.is_admin):
+        user.is_admin = (cargo == 'admin') and current_user.is_admin
+        user.is_gerente = (cargo == 'gerente')
+        user.is_supervisor = (cargo == 'supervisor')
+    db.session.commit()
+    flash(f'Usuário {user.nome_completo} atualizado.', 'success')
+    return redirect(url_for('dashboard'))
+
 @app.route('/usuarios/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_usuario(id):

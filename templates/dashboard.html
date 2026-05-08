@@ -224,6 +224,43 @@
     <div class="card">
       <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Gerenciamento de Usuários</h2>
 
+      <!-- Modal de edição de usuário -->
+      <div id="modal-edit" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:14px;padding:28px 32px;width:380px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.18);">
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:18px;">Editar Usuário</h3>
+          <form method="POST" id="form-edit">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+              <label class="form-label">Nome Completo</label>
+              <input class="form-control" name="nome" id="edit-nome" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Login</label>
+              <input class="form-control" name="username" id="edit-username" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nível de Acesso</label>
+              <select name="cargo" id="edit-cargo" class="form-control">
+                <option value="tecnico">🔧 Técnico</option>
+                <option value="supervisor">🗺️ Supervisor</option>
+                <option value="gerente">👔 Gerente</option>
+                {% if current_user.is_admin %}
+                <option value="admin">⚙️ Administrador</option>
+                {% endif %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nova Senha <span style="color:#9ca3af;font-weight:400;">(deixe em branco para não alterar)</span></label>
+              <input class="form-control" type="password" name="nova_senha" placeholder="••••••" autocomplete="new-password">
+            </div>
+            <div style="display:flex;gap:10px;margin-top:6px;">
+              <button type="submit" class="btn btn-blue" style="flex:1;">Salvar</button>
+              <button type="button" class="btn btn-outline" onclick="fecharModal()" style="flex:1;">Cancelar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Lista de usuários -->
       <table style="margin-bottom:16px;">
         <thead><tr><th>Nome</th><th>Login</th><th>Nível</th><th></th></tr></thead>
@@ -243,12 +280,14 @@
                 <span class="badge" style="background:#e0f0ff;color:#0077c8;">🔧 Técnico</span>
               {% endif %}
             </td>
-            <td>
+            <td style="display:flex;gap:4px;align-items:center;">
+              <button onclick="abrirModal({{ u.id }}, '{{ u.nome_completo|e }}', '{{ u.username|e }}', '{{ 'admin' if u.is_admin else ('gerente' if u.is_gerente else ('supervisor' if u.is_supervisor else 'tecnico')) }}')"
+                style="background:none;border:none;cursor:pointer;color:#0077c8;font-size:15px;padding:2px 5px;" title="Editar">✏️</button>
               {% if u.id != current_user.id %}
               <form method="POST" action="{{ url_for('delete_usuario', id=u.id) }}" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" onclick="return confirm('Deletar usuário {{ u.nome_completo }}?')"
-                  style="background:none;border:none;cursor:pointer;color:#d42b2b;font-size:16px;padding:2px 6px;" title="Deletar">✕</button>
+                  style="background:none;border:none;cursor:pointer;color:#d42b2b;font-size:16px;padding:2px 5px;" title="Deletar">✕</button>
               </form>
               {% endif %}
             </td>
@@ -379,5 +418,20 @@ new Chart(document.getElementById('chartEquip'), {
   }
 });
 {% endif %}
+
+function abrirModal(id, nome, username, cargo) {
+  document.getElementById('edit-nome').value = nome;
+  document.getElementById('edit-username').value = username;
+  document.getElementById('edit-cargo').value = cargo;
+  document.getElementById('form-edit').action = '/usuarios/editar/' + id;
+  const modal = document.getElementById('modal-edit');
+  modal.style.display = 'flex';
+}
+function fecharModal() {
+  document.getElementById('modal-edit').style.display = 'none';
+}
+document.getElementById('modal-edit').addEventListener('click', function(e) {
+  if (e.target === this) fecharModal();
+});
 </script>
 {% endblock %}
