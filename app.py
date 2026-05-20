@@ -1023,6 +1023,197 @@ def logs_global():
 def ping():
     return 'ok', 200
 
+def _gerar_manual_pdf():
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.lib import colors as rcolors
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+    styles = getSampleStyleSheet()
+    AZUL = rcolors.HexColor('#003f6e')
+    AZUL2 = rcolors.HexColor('#0077c8')
+
+    titulo = ParagraphStyle('titulo', parent=styles['Title'],
+                            textColor=AZUL, fontSize=20, spaceAfter=6)
+    h1 = ParagraphStyle('h1', parent=styles['Heading1'],
+                        textColor=AZUL, fontSize=13, spaceBefore=14, spaceAfter=4)
+    h2 = ParagraphStyle('h2', parent=styles['Heading2'],
+                        textColor=AZUL2, fontSize=11, spaceBefore=8, spaceAfter=3)
+    corpo = ParagraphStyle('corpo', parent=styles['Normal'],
+                           fontSize=9.5, leading=14, spaceAfter=4)
+    item = ParagraphStyle('item', parent=corpo, leftIndent=16, bulletIndent=8)
+
+    story = []
+
+    # Capa
+    story.append(Spacer(1, 1.5*cm))
+    story.append(Paragraph("Sistema de Ordens de Serviço", titulo))
+    story.append(Paragraph("Minipa Precision — Assistência Técnica Autorizada", styles['Normal']))
+    story.append(Spacer(1, 0.5*cm))
+    story.append(Paragraph(f"Manual do Usuário — Versão {datetime.now().strftime('%m/%Y')}", styles['Italic']))
+    story.append(HRFlowable(width='100%', thickness=1.5, color=AZUL, spaceAfter=18))
+
+    # 1. Acesso
+    story.append(Paragraph("1. Acesso ao Sistema", h1))
+    story.append(Paragraph("Endereço: <b>https://sistema-minipa.onrender.com</b>", corpo))
+    story.append(Paragraph("Na tela de login informe seu <b>usuário</b> e <b>senha</b>. "
+                            "No primeiro acesso você será obrigado a criar uma nova senha "
+                            "(mínimo 6 caracteres). Guarde-a em local seguro.", corpo))
+
+    # 2. Perfis
+    story.append(Paragraph("2. Perfis de Acesso", h1))
+    data = [
+        ['Perfil', 'O que pode fazer'],
+        ['Administrador', 'Acesso total: usuários, autorizadas, relatórios, todas as OS'],
+        ['Gerente', 'Vê todas as OS, gerencia usuários e estoque, relatórios'],
+        ['Supervisor', 'Vê OS das autorizadas que supervisiona, relatório de peças'],
+        ['Técnico', 'Abre e edita OS apenas da sua autorizada'],
+    ]
+    t = Table(data, colWidths=[4*cm, 12*cm])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), AZUL),
+        ('TEXTCOLOR', (0,0), (-1,0), rcolors.white),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [rcolors.white, rcolors.HexColor('#f0f6ff')]),
+        ('GRID', (0,0), (-1,-1), 0.3, rcolors.HexColor('#d0e3f5')),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+    ]))
+    story.append(t)
+
+    # 3. Dashboard
+    story.append(Paragraph("3. Dashboard", h1))
+    story.append(Paragraph("Tela principal com:", corpo))
+    for txt in ["Totais de OS: abertas, aguardando peça, concluídas e faturamento",
+                "Gráfico de OS dos últimos 6 meses",
+                "Distribuição por status (gráfico de pizza)",
+                "Top 5 equipamentos mais atendidos",
+                "Fila de reparo com busca e filtro por status",
+                "Gerenciamento de estoque e usuários (admin/gerente)"]:
+        story.append(Paragraph(f"• {txt}", item))
+
+    # 4. OS
+    story.append(Paragraph("4. Ordens de Serviço (OS)", h1))
+    story.append(Paragraph("4.1 Abrir Nova OS", h2))
+    story.append(Paragraph("Clique em <b>+ Abrir Nova OS</b> no topo do Dashboard ou no menu lateral. "
+                            "Preencha os dados do cliente (PF ou PJ), equipamento, defeito relatado "
+                            "e peças necessárias. O campo CEP preenche o endereço automaticamente.", corpo))
+
+    story.append(Paragraph("4.2 Acompanhar e Alterar Status", h2))
+    data2 = [['Status', 'Significado'],
+             ['Aberta', 'OS recém criada, aguardando análise'],
+             ['Em análise', 'Técnico avaliando o equipamento'],
+             ['Aguardando peça', 'Peça solicitada ao fabricante'],
+             ['Peça enviada', 'Fabricante enviou a peça'],
+             ['Manutenção concluída', 'Reparo finalizado'],
+             ['Equipamento retirado pelo cliente', 'Cliente buscou o equipamento'],
+             ['Concluída', 'OS encerrada'],
+             ['Enviada para fabricante', 'Equipamento encaminhado à Minipa'],]
+    t2 = Table(data2, colWidths=[5.5*cm, 10.5*cm])
+    t2.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), AZUL),
+        ('TEXTCOLOR', (0,0), (-1,0), rcolors.white),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [rcolors.white, rcolors.HexColor('#f0f6ff')]),
+        ('GRID', (0,0), (-1,-1), 0.3, rcolors.HexColor('#d0e3f5')),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    story.append(t2)
+
+    story.append(Paragraph("4.3 Gerar PDF e Enviar por E-mail", h2))
+    story.append(Paragraph("Dentro de uma OS, use os botões no topo: <b>Gerar PDF</b> baixa o relatório "
+                            "e <b>Enviar para Minipa</b> envia o PDF por e-mail para a Minipa e "
+                            "muda o status para 'Enviada para fabricante'.", corpo))
+
+    # 5. Peças
+    story.append(Paragraph("5. Relatório de Peças por Autorizada", h1))
+    story.append(Paragraph("Disponível no Dashboard (admin/gerente/supervisor). "
+                            "Lista todas as peças solicitadas agrupadas por filial. "
+                            "O botão <b>Enviar para Minipa</b> envia o relatório em PDF "
+                            "para wfmalcato@minipa.com.br.", corpo))
+
+    # 6. Estoque
+    story.append(Paragraph("6. Inventário / Estoque", h1))
+    story.append(Paragraph("Visível no Dashboard (admin/gerente). Adicione componentes com "
+                            "nome, quantidade e posição de prateleira. Itens com menos de 5 "
+                            "unidades são destacados em vermelho.", corpo))
+
+    # 7. Dicas
+    story.append(Paragraph("7. Dicas Importantes", h1))
+    for txt in [
+        "Troque sua senha no primeiro acesso — não compartilhe com terceiros.",
+        "O sistema fica inativo no plano gratuito do Render; o primeiro acesso do dia pode demorar até 50 segundos.",
+        "Fotos de defeitos e peças são armazenadas na nuvem (Cloudinary) e ficam disponíveis no PDF.",
+        "O histórico de cada OS registra automaticamente todas as alterações de status e edições.",
+        "Em caso de problema, entre em contato com o administrador do sistema.",
+    ]:
+        story.append(Paragraph(f"• {txt}", item))
+
+    story.append(Spacer(1, 1*cm))
+    story.append(HRFlowable(width='100%', thickness=0.5, color=AZUL))
+    story.append(Paragraph(f"Minipa Precision — Sistema OS   |   Gerado em {datetime.now().strftime('%d/%m/%Y')}",
+                           ParagraphStyle('rodape', parent=styles['Normal'],
+                                          fontSize=8, textColor=rcolors.grey, alignment=TA_CENTER)))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
+@app.route('/usuarios/enviar_acesso/<int:id>', methods=['POST'])
+@login_required
+def enviar_acesso_usuario(id):
+    if not current_user.is_admin:
+        flash('Sem permissão.', 'error')
+        return redirect(url_for('dashboard'))
+    user = User.query.get_or_404(id)
+    if not user.filial or not user.filial.email:
+        flash(f'Usuário {user.nome_completo} não tem e-mail cadastrado na autorizada.', 'error')
+        return redirect(url_for('dashboard'))
+    NOVA_SENHA = '123456'
+    user.password = generate_password_hash(NOVA_SENHA, method='pbkdf2:sha256')
+    user.must_change_password = True
+    db.session.commit()
+    try:
+        manual = _gerar_manual_pdf()
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_USER
+        msg['To'] = user.filial.email
+        msg['Subject'] = 'Acesso ao Sistema Minipa OS — Credenciais de Acesso'
+        corpo = (
+            f"Olá, {user.nome_completo}!\n\n"
+            f"Seguem suas credenciais de acesso ao Sistema de Ordens de Serviço Minipa:\n\n"
+            f"  Endereço: https://sistema-minipa.onrender.com\n"
+            f"  Login:    {user.username}\n"
+            f"  Senha:    {NOVA_SENHA}\n\n"
+            f"No primeiro acesso você será solicitado a criar uma nova senha pessoal.\n"
+            f"O manual do usuário está anexo neste e-mail.\n\n"
+            f"Em caso de dúvidas entre em contato com o administrador.\n\n"
+            f"Atenciosamente,\nMinipa Precision — Assistência Técnica Autorizada"
+        )
+        msg.attach(MIMEText(corpo, 'plain'))
+        att = MIMEApplication(manual.read(), _subtype='pdf')
+        att.add_header('Content-Disposition', 'attachment', filename='Manual_Sistema_Minipa.pdf')
+        msg.attach(att)
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_USER, EMAIL_PASS)
+            server.send_message(msg)
+        flash(f'Credenciais enviadas para {user.filial.email} ({user.nome_completo}).', 'success')
+    except Exception:
+        app.logger.exception('Erro ao enviar credenciais usuario %s', id)
+        flash('Senha redefinida mas erro ao enviar e-mail. Verifique as configurações SMTP.', 'error')
+    return redirect(url_for('dashboard'))
+
 @app.route('/logout', methods=['POST'])
 @login_required
 def logout():
