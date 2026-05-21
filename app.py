@@ -967,7 +967,7 @@ def novo_tecnico():
 @app.route('/autorizadas', methods=['GET', 'POST'])
 @login_required
 def autorizadas():
-    if not current_user.is_admin:
+    if not (current_user.is_admin or current_user.is_gerente):
         return redirect(url_for('dashboard'))
     if request.method == 'POST':
         action = request.form.get('action')
