@@ -1214,6 +1214,99 @@ def enviar_acesso_usuario(id):
         flash('Senha redefinida mas erro ao enviar e-mail. Verifique as configurações SMTP.', 'error')
     return redirect(url_for('dashboard'))
 
+@app.route('/admin/cadastrar_autorizadas_faltantes')
+@login_required
+def cadastrar_autorizadas_faltantes():
+    if not current_user.is_admin:
+        flash('Sem permissão.', 'error')
+        return redirect(url_for('dashboard'))
+
+    # Full list extracted from the uploaded Excel + PDF
+    LISTA = [
+        {'nome': 'IB Instalações Eletro Eletronica', 'cidade': 'Lauro de Freitas', 'estado': 'BA', 'email': 'ibinst@terra.com.br'},
+        {'nome': 'M.Micros / GC Marques', 'cidade': 'Fortaleza', 'estado': 'CE', 'email': 'mmicroscentraldevendas@gmail.com'},
+        {'nome': 'L.A. Tecnologia / LD Serviços', 'cidade': 'Vitória', 'estado': 'ES', 'email': 'laureano@latecnologia.com.br'},
+        {'nome': 'Precisa Instrumentação e Calibração', 'cidade': 'Juiz de Fora', 'estado': 'MG', 'email': 'contato@precisacalibracao.com.br'},
+        {'nome': 'Elet. Lindoaldo / Lindoaldo Rodrigues', 'cidade': 'Campina Grande', 'estado': 'PB', 'email': 'lindoaldo@yahoo.com.br'},
+        {'nome': 'JED Com. / Ind. Automação', 'cidade': 'Mossoró', 'estado': 'RN', 'email': 'atendimento@indautomacao.com.br'},
+        {'nome': 'Sertefor Eletrônica', 'cidade': 'Fortaleza', 'estado': 'CE', 'email': 'sertefor@hotmail.com'},
+        {'nome': 'CETECQ / Marcelo Felicio', 'cidade': 'João Pessoa', 'estado': 'PB', 'email': 'cetecq.marcelo@yahoo.com'},
+        {'nome': 'Nexus do Brasil', 'cidade': 'Rio Branco', 'estado': 'AC', 'email': 'nexusdptecnico@gmail.com'},
+        {'nome': 'Link Tecnologia Ltda', 'cidade': 'Belém', 'estado': 'PA', 'email': 'linkltda@yahoo.com.br'},
+        {'nome': 'Siatec Eletrônica', 'cidade': '', 'estado': 'SP', 'email': 'siatec.eletronica@uol.com.br'},
+        {'nome': 'Walm Lab', 'cidade': '', 'estado': 'RS', 'email': 'comercial@walmlab.com.br'},
+        {'nome': 'Mitec Instrumentos Industriais', 'cidade': '', 'estado': 'RS', 'email': 'mitec@mitec.com.br'},
+        {'nome': 'Startech Eletronica Industrial', 'cidade': '', 'estado': 'SC', 'email': 'eletronicastartech@gmail.com'},
+        {'nome': 'LEMP Instrumentos de Precisão', 'cidade': '', 'estado': 'RS', 'email': 'lemp@lemp.com.br'},
+        # Autorizadas already likely in DB — update email if missing
+        {'nome': 'AGR Eletrônica', 'cidade': '', 'estado': 'RS', 'email': 'agr@agreletronica.com.br'},
+        {'nome': 'Infoeletro', 'cidade': '', 'estado': 'RS', 'email': 'infoeletro@infoeletro.com.br'},
+    ]
+
+    criadas = []
+    atualizadas = []
+    ignoradas = []
+
+    existing = Filial.query.all()
+    existing_names_lower = {f.nome.lower().strip(): f for f in existing}
+
+    for item in LISTA:
+        nome_lower = item['nome'].lower().strip()
+        # Try exact match first
+        match = existing_names_lower.get(nome_lower)
+        # Try partial match: see if any existing name contains key words from item
+        if not match:
+            words = [w for w in nome_lower.split() if len(w) > 3]
+            for ex_name, ex_filial in existing_names_lower.items():
+                if any(w in ex_name for w in words):
+                    match = ex_filial
+                    break
+        if match:
+            changed = False
+            if not match.email and item['email']:
+                match.email = item['email']
+                changed = True
+            if not match.cidade and item['cidade']:
+                match.cidade = item['cidade']
+                changed = True
+            if not match.estado and item['estado']:
+                match.estado = item['estado']
+                changed = True
+            if changed:
+                atualizadas.append(f"{match.nome} — email/cidade/estado atualizados")
+            else:
+                ignoradas.append(f"{match.nome} — já estava completo")
+        else:
+            nova = Filial(
+                nome=item['nome'],
+                cidade=item['cidade'],
+                estado=item['estado'],
+                email=item['email'],
+                ativa=True,
+            )
+            db.session.add(nova)
+            criadas.append(f"{item['nome']} ({item['cidade']}/{item['estado']})")
+
+    db.session.commit()
+
+    html = '<style>body{font-family:sans-serif;max-width:700px;margin:40px auto;padding:0 20px;}h2{color:#003f6e;}ul{margin:8px 0 20px;}li{margin:4px 0;}.ok{color:#16a34a;}.upd{color:#d97706;}.skip{color:#6b7280;}</style>'
+    html += f'<h2>Cadastro de Autorizadas — Resultado</h2>'
+    html += f'<p><strong class="ok">Criadas ({len(criadas)}):</strong></p><ul>'
+    for x in criadas:
+        html += f'<li class="ok">✔ {x}</li>'
+    html += '</ul>'
+    html += f'<p><strong class="upd">Atualizadas ({len(atualizadas)}):</strong></p><ul>'
+    for x in atualizadas:
+        html += f'<li class="upd">↻ {x}</li>'
+    html += '</ul>'
+    html += f'<p><strong class="skip">Ignoradas (já completas) ({len(ignoradas)}):</strong></p><ul>'
+    for x in ignoradas:
+        html += f'<li class="skip">— {x}</li>'
+    html += '</ul>'
+    html += '<br><a href="/" style="color:#0077c8;">← Voltar ao Dashboard</a>'
+    return html
+
+
 @app.route('/logout', methods=['POST'])
 @login_required
 def logout():
