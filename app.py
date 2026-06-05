@@ -5,14 +5,14 @@ from flask_wtf.csrf import CSRFProtect
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
-from flask import Flask, render_template, redirect, url_for, request, flash, send_file, jsonify
+from flask import Flask, render_template, redirect, url_for, request, flash, send_file, jsonify, session
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from datetime import datetime
-from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial, supervisor_autorizadas, LogOS
+from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial, supervisor_autorizadas, LogOS, ChatMessage
 
 app = Flask(__name__)
 _secret = os.environ.get('SECRET_KEY')
@@ -1370,6 +1370,82 @@ def _init_db():
             print(f'DB init attempt {attempt + 1} failed: {e}')
             if attempt < 4:
                 time.sleep(3)
+
+# ── Chat Bot ─────────────────────────────────────────────────────────────────
+
+_BOT_RULES = [
+    (['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'tudo bem', 'oi tudo'],
+     'Olá! Sou o assistente do sistema Minipa. Posso ajudar com Ordens de Serviço, relatórios, estoque e dúvidas gerais. O que precisa?'),
+    (['obrigado', 'obrigada', 'valeu', 'grato', 'grata'],
+     'De nada! Se tiver mais dúvidas, pode perguntar.'),
+    (['nova os', 'criar os', 'abrir os', 'nova ordem', 'criar ordem'],
+     'Para criar uma nova OS: clique em **Nova OS** no menu lateral. Preencha os dados do cliente, equipamento, defeito relatado e tipo de serviço. Após salvar, a OS é gerada com número automático.'),
+    (['status', 'situação', 'acompanhar', 'andamento'],
+     'Os status disponíveis são: **Aberta**, **Aguardando Peça**, **Em Andamento**, **Concluída** e **Cancelada**. Você pode alterar o status ao editar a OS.'),
+    (['peça', 'peca', 'solicitar peça', 'componente', 'reposição'],
+     'Para solicitar peças: acesse a OS, clique em **Solicitar Peça** e informe código, descrição e quantidade. O sistema envia e-mail automático para o setor responsável.'),
+    (['relatório', 'relatorio', 'pdf', 'exportar', 'imprimir'],
+     'Relatórios disponíveis no menu **Relatórios**: \n• Relatório de Estoque\n• Peças por Autorizada\nAmbos são gerados em PDF diretamente no navegador.'),
+    (['estoque', 'inventário', 'inventario', 'componentes'],
+     'O estoque fica no relatório **Relatório de Estoque**. Administradores e gerentes podem gerenciar componentes, quantidades e posições.'),
+    (['senha', 'password', 'trocar senha', 'alterar senha'],
+     'Para trocar sua senha: clique no ícone do usuário ou acesse **Configurações → Trocar Senha**. Na primeira vez, o sistema obriga a troca automática.'),
+    (['usuário', 'usuario', 'cadastrar usuário', 'novo usuário', 'acesso'],
+     'Somente administradores podem criar usuários. Os perfis disponíveis são: Admin, Gerente, Supervisor e Técnico.'),
+    (['dashboard', 'painel', 'resumo', 'início', 'inicio'],
+     'O Dashboard exibe: total de OS abertas, concluídas, aguardando peça, além de gráficos de desempenho por período. Acesse clicando em **Dashboard** no menu.'),
+    (['autorizada', 'filial', 'unidade'],
+     'As autorizadas são as unidades de assistência técnica. Gerentes e admins cadastram e gerenciam filiais em **Administração → Autorizadas**.'),
+    (['log', 'auditoria', 'histórico', 'historico', 'atividade'],
+     'O **Log de Atividades** registra todas as ações do sistema: criação/edição de OS, mudanças de status, solicitações de peças e acessos. Disponível para Admin e Gerente.'),
+    (['ajuda', 'help', 'suporte', 'problema', 'erro'],
+     'Posso ajudar com:\n• Criar e gerenciar Ordens de Serviço\n• Status e acompanhamento\n• Solicitar peças\n• Relatórios PDF\n• Senhas e usuários\n• Estoque e filiais\n\nDigite sua dúvida!'),
+]
+
+def _bot_respond(text):
+    t = text.lower().strip()
+    for keywords, reply in _BOT_RULES:
+        if any(k in t for k in keywords):
+            return reply
+    return ('Não entendi muito bem. Posso ajudar com: **OS**, **status**, **peças**, **relatórios**, '
+            '**estoque**, **usuários** ou **senha**. Qual desses temas você precisa?')
+
+
+@app.route('/api/chat/history')
+@login_required
+def chat_history():
+    key = session.get('chat_key')
+    if not key:
+        return jsonify([])
+    msgs = (ChatMessage.query
+            .filter_by(session_key=key)
+            .order_by(ChatMessage.created_at)
+            .limit(50).all())
+    return jsonify([{'role': m.role, 'message': m.message,
+                     'time': m.created_at.strftime('%H:%M')} for m in msgs])
+
+
+@app.route('/api/chat/send', methods=['POST'])
+@login_required
+@csrf.exempt
+def chat_send():
+    data = request.get_json(silent=True) or {}
+    user_msg = (data.get('message') or '').strip()
+    if not user_msg or len(user_msg) > 500:
+        return jsonify({'error': 'mensagem inválida'}), 400
+
+    if 'chat_key' not in session:
+        session['chat_key'] = secrets.token_hex(16)
+    key = session['chat_key']
+
+    db.session.add(ChatMessage(session_key=key, role='user', message=user_msg))
+    bot_reply = _bot_respond(user_msg)
+    db.session.add(ChatMessage(session_key=key, role='bot', message=bot_reply))
+    db.session.commit()
+
+    now = datetime.utcnow().strftime('%H:%M')
+    return jsonify({'bot': bot_reply, 'time': now})
+
 
 with app.app_context():
     _init_db()

@@ -101,3 +101,10 @@ class Estoque(db.Model):
     componente = db.Column(db.String(100), nullable=False)
     quantidade = db.Column(db.Integer, default=0)
     posicao = db.Column(db.String(50))
+
+class ChatMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    session_key = db.Column(db.String(64), nullable=False, index=True)
+    role = db.Column(db.String(10), nullable=False)  # 'user' ou 'bot'
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
