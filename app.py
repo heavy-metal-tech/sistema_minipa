@@ -12,7 +12,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from datetime import datetime
-from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial, supervisor_autorizadas, LogOS
+from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial, supervisor_autorizadas, LogOS, brt_now
 
 app = Flask(__name__)
 _secret = os.environ.get('SECRET_KEY')
@@ -307,7 +307,7 @@ def pdf_estoque():
     p.setFont("Helvetica-Bold", 16)
     p.drawString(40, H - 40, "RELATÓRIO DE INVENTÁRIO — MINIPA PRECISION")
     p.setFont("Helvetica", 10)
-    p.drawString(40, H - 58, datetime.now().strftime('%d/%m/%Y %H:%M'))
+    p.drawString(40, H - 58, brt_now().strftime('%d/%m/%Y %H:%M'))
     p.setFillColor(colors.black)
     y = H - 100
     p.setFont("Helvetica-Bold", 10)
@@ -344,7 +344,7 @@ def _draw_pecas_por_autorizada(filial_id=None, filial_ids=None):
         p.setFont("Helvetica-Bold", 14)
         p.drawString(40, H - 38, "RELATÓRIO DE PEÇAS SOLICITADAS POR AUTORIZADA")
         p.setFont("Helvetica", 9)
-        p.drawString(40, H - 56, f"Gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')}")
+        p.drawString(40, H - 56, f"Gerado em {brt_now().strftime('%d/%m/%Y às %H:%M')}")
         p.setFillColor(colors.black)
         return H - 90
 
@@ -451,7 +451,7 @@ def email_pecas_autorizada():
             filiais = Filial.query.order_by(Filial.nome).all()
         nomes_filiais = ', '.join(f.nome for f in filiais) if filiais else 'Todas'
 
-        msg['Subject'] = f"Relatório de Peças — {nomes_filiais} — {datetime.now().strftime('%d/%m/%Y')}"
+        msg['Subject'] = f"Relatório de Peças — {nomes_filiais} — {brt_now().strftime('%d/%m/%Y')}"
 
         filiais_detalhe = '\n'.join(
             f"  • {f.nome}{(' — ' + f.cidade + '/' + f.estado) if f.cidade else ''}"
@@ -462,7 +462,7 @@ def email_pecas_autorizada():
         body = (
             f"Prezado William,\n\n"
             f"Segue em anexo o relatório de peças solicitadas, gerado em "
-            f"{datetime.now().strftime('%d/%m/%Y às %H:%M')}.\n\n"
+            f"{brt_now().strftime('%d/%m/%Y às %H:%M')}.\n\n"
             f"Autorizada(s) incluída(s) no relatório:\n{filiais_detalhe}\n\n"
             f"Responsável pelo envio: {current_user.nome_completo} ({cargo})\n\n"
             f"Atenciosamente,\n{current_user.nome_completo}\n"
@@ -471,7 +471,7 @@ def email_pecas_autorizada():
         msg.attach(MIMEText(body, 'plain'))
         att = MIMEApplication(buf.read(), _subtype='pdf')
         att.add_header('Content-Disposition', 'attachment',
-                       filename=f"pecas_por_autorizada_{datetime.now().strftime('%Y%m%d')}.pdf")
+                       filename=f"pecas_por_autorizada_{brt_now().strftime('%Y%m%d')}.pdf")
         msg.attach(att)
         with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
             server.starttls()
@@ -627,7 +627,7 @@ def dashboard():
     meses = []
     os_por_mes = []
     for i in range(5, -1, -1):
-        d = datetime.now().replace(day=1) - timedelta(days=i * 28)
+        d = brt_now().replace(day=1) - timedelta(days=i * 28)
         count = base_q.filter(
             db.extract('month', OrdemServico.data_abertura) == d.month,
             db.extract('year', OrdemServico.data_abertura) == d.year
@@ -665,7 +665,7 @@ def nova_os():
             allowed = [f.id for f in current_user.autorizadas_supervisionadas]
             if filial_id and filial_id not in allowed:
                 flash('Autorizada inválida.', 'error')
-                return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=datetime.now())
+                return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=brt_now())
         else:
             filial_id = current_user.filial_id
         nova = OrdemServico(
@@ -704,7 +704,7 @@ def nova_os():
             db.session.rollback()
             app.logger.exception('Erro ao criar OS')
             flash('Erro ao criar OS. Tente novamente.', 'error')
-            return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=datetime.now())
+            return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=brt_now())
         # Peças
         codigos = request.form.getlist('peca_codigo[]')
         descricoes = request.form.getlist('peca_descricao[]')
@@ -726,8 +726,8 @@ def nova_os():
             db.session.rollback()
             app.logger.exception('Erro ao salvar OS')
             flash('Erro ao salvar OS. Tente novamente.', 'error')
-            return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=datetime.now())
-    return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=datetime.now())
+            return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=brt_now())
+    return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=brt_now())
 
 @app.route('/os/<int:id>/editar', methods=['GET', 'POST'])
 @login_required
@@ -1055,7 +1055,7 @@ def _gerar_manual_pdf():
     story.append(Paragraph("Sistema de Ordens de Serviço", titulo))
     story.append(Paragraph("Minipa Precision — Assistência Técnica Autorizada", styles['Normal']))
     story.append(Spacer(1, 0.5*cm))
-    story.append(Paragraph(f"Manual do Usuário — Versão {datetime.now().strftime('%m/%Y')}", styles['Italic']))
+    story.append(Paragraph(f"Manual do Usuário — Versão {brt_now().strftime('%m/%Y')}", styles['Italic']))
     story.append(HRFlowable(width='100%', thickness=1.5, color=AZUL, spaceAfter=18))
 
     # 1. Acesso
@@ -1161,7 +1161,7 @@ def _gerar_manual_pdf():
 
     story.append(Spacer(1, 1*cm))
     story.append(HRFlowable(width='100%', thickness=0.5, color=AZUL))
-    story.append(Paragraph(f"Minipa Precision — Sistema OS   |   Gerado em {datetime.now().strftime('%d/%m/%Y')}",
+    story.append(Paragraph(f"Minipa Precision — Sistema OS   |   Gerado em {brt_now().strftime('%d/%m/%Y')}",
                            ParagraphStyle('rodape', parent=styles['Normal'],
                                           fontSize=8, textColor=rcolors.grey, alignment=TA_CENTER)))
 

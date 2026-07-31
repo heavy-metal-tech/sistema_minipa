@@ -1,6 +1,12 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+BRT = timezone(timedelta(hours=-3))
+
+def brt_now():
+    """Current time in Brasília (UTC-3), stored naively so SQLAlchemy accepts it."""
+    return datetime.now(BRT).replace(tzinfo=None)
 
 db = SQLAlchemy()
 
@@ -48,7 +54,7 @@ class PecaOS(db.Model):
 
 class OrdemServico(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    data_abertura = db.Column(db.DateTime, default=datetime.utcnow)
+    data_abertura = db.Column(db.DateTime, default=brt_now)
     status = db.Column(db.String(30), default='Aberta', index=True)
 
     # Dados do Cliente
@@ -91,7 +97,7 @@ class OrdemServico(db.Model):
 class LogOS(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     os_id = db.Column(db.Integer, db.ForeignKey('ordem_servico.id'), nullable=False, index=True)
-    data = db.Column(db.DateTime, default=datetime.utcnow)
+    data = db.Column(db.DateTime, default=brt_now)
     usuario = db.Column(db.String(100))
     tipo = db.Column(db.String(50))   # 'status', 'peca_solicitada', 'peca_enviada', 'edicao'
     descricao = db.Column(db.Text)
