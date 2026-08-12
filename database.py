@@ -79,6 +79,7 @@ class OrdemServico(db.Model):
     equipamento = db.Column(db.String(100), nullable=False)
     serie = db.Column(db.String(50), nullable=False)
     nota_fiscal = db.Column(db.String(50))
+    foto_nf = db.Column(db.String(300))
     data_nf = db.Column(db.String(20))
     garantia = db.Column(db.String(3), default='Não')
 
