@@ -73,7 +73,7 @@ def rate_limit_exceeded(e):
     flash('Muitas tentativas. Aguarde 1 minuto e tente novamente.', 'error')
     return render_template('login.html'), 429
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────────────
 
 def salvar_foto(foto):
     """Upload photo to Cloudinary if credentials are set, otherwise skip."""
@@ -283,7 +283,7 @@ def draw_pdf_os(os_data):
     buffer.seek(0)
     return buffer
 
-# ── Rotas de PDF ──────────────────────────────────────────────────────────────
+# ── Rotas de PDF ──────────────────────────────────────────────────────────────────────────────
 
 @app.route('/relatorio/os/<int:id>')
 @login_required
@@ -519,7 +519,7 @@ def enviar_email(id):
         flash('Erro ao enviar e-mail. Verifique as configurações SMTP.', 'error')
     return redirect(url_for('ver_os', id=id))
 
-# ── API ───────────────────────────────────────────────────────────────────────
+# ── API ─────────────────────────────────────────────────────────────────────────────────
 
 @app.route('/api/tabela_precos')
 @login_required
@@ -527,7 +527,7 @@ def api_tabela_precos():
     itens = TabelaPreco.query.all()
     return jsonify([{'id': i.id, 'tipo': i.tipo_servico, 'valor': i.valor} for i in itens])
 
-# ── Navegação ─────────────────────────────────────────────────────────────────
+# ── Navegação ──────────────────────────────────────────────────────────────────────────────
 
 @app.route('/', methods=['GET', 'POST'])
 @limiter.limit("5 per minute")
@@ -697,6 +697,11 @@ def nova_os():
             tecnico=current_user.nome_completo,
             filial_id=filial_id,
         )
+        foto_nf_file = request.files.get('foto_nf')
+        if foto_nf_file and foto_nf_file.filename:
+            caminho_nf = salvar_foto(foto_nf_file)
+            if caminho_nf:
+                nova.foto_nf = caminho_nf
         db.session.add(nova)
         try:
             db.session.flush()
@@ -765,6 +770,12 @@ def editar_os(id):
         os_data.defeito = request.form.get('defeito', os_data.defeito)
         os_data.tipo_servico = request.form.get('tipo_servico', os_data.tipo_servico)
         os_data.valor = request.form.get('valor', os_data.valor)
+        # Upload foto NF
+        foto_nf_file = request.files.get('foto_nf')
+        if foto_nf_file and foto_nf_file.filename:
+            caminho_nf = salvar_foto(foto_nf_file)
+            if caminho_nf:
+                os_data.foto_nf = caminho_nf
         # Novas fotos do defeito
         novas_fotos = []
         for foto in request.files.getlist('fotos_defeito[]'):
@@ -1221,7 +1232,6 @@ def cadastrar_autorizadas_faltantes():
         flash('Sem permissão.', 'error')
         return redirect(url_for('dashboard'))
 
-    # Full list extracted from the uploaded Excel + PDF
     LISTA = [
         {'nome': 'IB Instalações Eletro Eletronica', 'cidade': 'Lauro de Freitas', 'estado': 'BA', 'email': 'ibinst@terra.com.br'},
         {'nome': 'M.Micros / GC Marques', 'cidade': 'Fortaleza', 'estado': 'CE', 'email': 'mmicroscentraldevendas@gmail.com'},
@@ -1238,7 +1248,6 @@ def cadastrar_autorizadas_faltantes():
         {'nome': 'Mitec Instrumentos Industriais', 'cidade': '', 'estado': 'RS', 'email': 'mitec@mitec.com.br'},
         {'nome': 'Startech Eletronica Industrial', 'cidade': '', 'estado': 'SC', 'email': 'eletronicastartech@gmail.com'},
         {'nome': 'LEMP Instrumentos de Precisão', 'cidade': '', 'estado': 'RS', 'email': 'lemp@lemp.com.br'},
-        # Autorizadas already likely in DB — update email if missing
         {'nome': 'AGR Eletrônica', 'cidade': '', 'estado': 'RS', 'email': 'agr@agreletronica.com.br'},
         {'nome': 'Infoeletro', 'cidade': '', 'estado': 'RS', 'email': 'infoeletro@infoeletro.com.br'},
     ]
@@ -1252,9 +1261,7 @@ def cadastrar_autorizadas_faltantes():
 
     for item in LISTA:
         nome_lower = item['nome'].lower().strip()
-        # Try exact match first
         match = existing_names_lower.get(nome_lower)
-        # Try partial match: see if any existing name contains key words from item
         if not match:
             words = [w for w in nome_lower.split() if len(w) > 3]
             for ex_name, ex_filial in existing_names_lower.items():
@@ -1313,7 +1320,7 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# ── Init DB ───────────────────────────────────────────────────────────────────
+# ── Init DB ──────────────────────────────────────────────────────────────────────────────
 
 def _init_db():
     import time
@@ -1327,6 +1334,7 @@ def _init_db():
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE',
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_supervisor BOOLEAN DEFAULT FALSE',
         'ALTER TABLE filial ADD COLUMN IF NOT EXISTS email VARCHAR(150)',
+        'ALTER TABLE ordem_servico ADD COLUMN IF NOT EXISTS foto_nf VARCHAR(300)',
         '''CREATE TABLE IF NOT EXISTS log_os (
             id SERIAL PRIMARY KEY,
             os_id INTEGER REFERENCES ordem_servico(id) ON DELETE CASCADE,
