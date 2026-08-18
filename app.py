@@ -1187,7 +1187,8 @@ def enviar_acesso_usuario(id):
         flash('Sem permissão.', 'error')
         return redirect(url_for('dashboard'))
     user = User.query.get_or_404(id)
-    if not user.filial or not user.filial.email:
+    destino = (user.filial.email if user.filial else None) or (EMAIL_USER if (user.is_gerente or user.is_admin) else None)
+    if not destino:
         flash(f'Usuário {user.nome_completo} não tem e-mail cadastrado na autorizada.', 'error')
         return redirect(url_for('dashboard'))
     NOVA_SENHA = '123456'
@@ -1197,7 +1198,7 @@ def enviar_acesso_usuario(id):
     try:
         msg = MIMEMultipart()
         msg['From'] = EMAIL_USER
-        msg['To'] = user.filial.email
+        msg['To'] = destino
         msg['Subject'] = 'Acesso ao Sistema Minipa OS — Credenciais de Acesso'
         corpo = (
             f"Olá, {user.nome_completo}!\n\n"
@@ -1214,7 +1215,7 @@ def enviar_acesso_usuario(id):
             server.starttls()
             server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)
-        flash(f'Credenciais enviadas para {user.filial.email} ({user.nome_completo}).', 'success')
+        flash(f'Credenciais enviadas para {destino} ({user.nome_completo}).', 'success')
     except Exception:
         app.logger.exception('Erro ao enviar credenciais usuario %s', id)
         flash('Senha redefinida mas erro ao enviar e-mail. Verifique as configurações SMTP.', 'error')
