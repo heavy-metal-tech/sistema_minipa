@@ -35,6 +35,7 @@ class User(UserMixin, db.Model):
     filial_id = db.Column(db.Integer, db.ForeignKey('filial.id'), nullable=True)
     filial = db.relationship('Filial', backref='usuarios')
     must_change_password = db.Column(db.Boolean, default=False)
+    email = db.Column(db.String(150))
     autorizadas_supervisionadas = db.relationship('Filial', secondary=supervisor_autorizadas,
                                                   backref='supervisores')
 

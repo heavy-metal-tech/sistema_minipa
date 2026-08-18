@@ -919,6 +919,8 @@ def editar_usuario(id):
             return redirect(url_for('dashboard'))
         user.password = generate_password_hash(nova_senha)
         user.must_change_password = False
+    email_val = request.form.get('email_usuario', '').strip()
+    user.email = email_val or None
     if not (user.is_admin and not current_user.is_admin):
         user.is_admin = (cargo == 'admin') and current_user.is_admin
         user.is_gerente = (cargo == 'gerente')
@@ -1206,7 +1208,7 @@ def enviar_acesso_usuario(id):
         flash('Sem permissão.', 'error')
         return redirect(url_for('dashboard'))
     user = User.query.get_or_404(id)
-    destino = (user.filial.email if user.filial else None) or (EMAIL_USER if (user.is_gerente or user.is_admin) else None)
+    destino = user.email or (user.filial.email if user.filial else None) or (EMAIL_USER if (user.is_gerente or user.is_admin) else None)
     if not destino:
         flash(f'Usuário {user.nome_completo} não tem e-mail cadastrado na autorizada.', 'error')
         return redirect(url_for('dashboard'))
@@ -1338,6 +1340,7 @@ def _init_db():
         'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_supervisor BOOLEAN DEFAULT FALSE',
         'ALTER TABLE filial ADD COLUMN IF NOT EXISTS email VARCHAR(150)',
         'ALTER TABLE ordem_servico ADD COLUMN IF NOT EXISTS foto_nf VARCHAR(300)',
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email VARCHAR(150)',
         '''CREATE TABLE IF NOT EXISTS log_os (
             id SERIAL PRIMARY KEY,
             os_id INTEGER REFERENCES ordem_servico(id) ON DELETE CASCADE,
