@@ -1226,7 +1226,27 @@ def enviar_acesso_usuario(id):
         f"Em caso de dúvidas entre em contato com o administrador.\n\n"
         f"Atenciosamente,\nMinipa Precision — Assistência Técnica Autorizada"
     )
-    _enviar_email_bg(destino, 'Acesso ao Sistema Minipa OS — Credenciais de Acesso', corpo)
+    def _enviar_credenciais():
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = EMAIL_USER
+            msg['To'] = destino
+            msg['Subject'] = 'Acesso ao Sistema Minipa OS — Credenciais de Acesso'
+            msg.attach(MIMEText(corpo, 'plain'))
+            try:
+                pdf_buf = _gerar_manual_pdf()
+                att = MIMEApplication(pdf_buf.read(), _subtype='pdf')
+                att.add_header('Content-Disposition', 'attachment', filename='manual_sistema_minipa.pdf')
+                msg.attach(att)
+            except Exception:
+                app.logger.exception('Erro ao gerar manual PDF para credenciais')
+            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=28) as server:
+                server.starttls()
+                server.login(EMAIL_USER, EMAIL_PASS)
+                server.send_message(msg)
+        except Exception:
+            app.logger.exception('Erro ao enviar credenciais para %s', destino)
+    threading.Thread(target=_enviar_credenciais, daemon=True).start()
     flash(f'Senha redefinida. E-mail de credenciais sendo enviado para {destino} ({user.nome_completo}).', 'success')
     return redirect(url_for('dashboard'))
 
