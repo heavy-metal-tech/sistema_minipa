@@ -473,7 +473,7 @@ def email_pecas_autorizada():
         att.add_header('Content-Disposition', 'attachment',
                        filename=f"pecas_por_autorizada_{brt_now().strftime('%Y%m%d')}.pdf")
         msg.attach(att)
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=20) as server:
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=28) as server:
             server.starttls()
             server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)
@@ -506,7 +506,7 @@ def enviar_email(id):
         attachment = MIMEApplication(pdf_buffer.read(), _subtype='pdf')
         attachment.add_header('Content-Disposition', 'attachment', filename=f"OS_{os_data.id:05d}.pdf")
         msg.attach(attachment)
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=20) as server:
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=28) as server:
             server.starttls()
             server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)
@@ -1211,14 +1211,14 @@ def enviar_acesso_usuario(id):
             f"Atenciosamente,\nMinipa Precision — Assistência Técnica Autorizada"
         )
         msg.attach(MIMEText(corpo, 'plain'))
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=20) as server:
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=28) as server:
             server.starttls()
             server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)
         flash(f'Credenciais enviadas para {destino} ({user.nome_completo}).', 'success')
-    except Exception:
+    except Exception as e:
         app.logger.exception('Erro ao enviar credenciais usuario %s', id)
-        flash('Senha redefinida mas erro ao enviar e-mail. Verifique as configurações SMTP.', 'error')
+        flash(f'Senha redefinida mas erro ao enviar e-mail: {type(e).__name__}: {e}', 'error')
     return redirect(url_for('dashboard'))
 
 @app.route('/admin/cadastrar_autorizadas_faltantes')
