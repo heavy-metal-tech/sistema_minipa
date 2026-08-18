@@ -73,7 +73,7 @@ def rate_limit_exceeded(e):
     flash('Muitas tentativas. Aguarde 1 minuto e tente novamente.', 'error')
     return render_template('login.html'), 429
 
-# ── Helpers ────────────────────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────
 
 def salvar_foto(foto):
     """Upload photo to Cloudinary if credentials are set, otherwise skip."""
@@ -283,7 +283,7 @@ def draw_pdf_os(os_data):
     buffer.seek(0)
     return buffer
 
-# ── Rotas de PDF ──────────────────────────────────────────────────────────────────────────────
+# ── Rotas de PDF ─────────────────────────────────────────────────────────────────────────
 
 @app.route('/relatorio/os/<int:id>')
 @login_required
@@ -519,7 +519,7 @@ def enviar_email(id):
         flash('Erro ao enviar e-mail. Verifique as configurações SMTP.', 'error')
     return redirect(url_for('ver_os', id=id))
 
-# ── API ─────────────────────────────────────────────────────────────────────────────────
+# ── API ─────────────────────────────────────────────────────────────────────────────────────
 
 @app.route('/api/tabela_precos')
 @login_required
@@ -527,7 +527,7 @@ def api_tabela_precos():
     itens = TabelaPreco.query.all()
     return jsonify([{'id': i.id, 'tipo': i.tipo_servico, 'valor': i.valor} for i in itens])
 
-# ── Navegação ──────────────────────────────────────────────────────────────────────────────
+# ── Navegação ───────────────────────────────────────────────────────────────────────────────
 
 @app.route('/', methods=['GET', 'POST'])
 @limiter.limit("5 per minute")
@@ -1195,7 +1195,6 @@ def enviar_acesso_usuario(id):
     user.must_change_password = True
     db.session.commit()
     try:
-        manual = _gerar_manual_pdf()
         msg = MIMEMultipart()
         msg['From'] = EMAIL_USER
         msg['To'] = user.filial.email
@@ -1206,15 +1205,11 @@ def enviar_acesso_usuario(id):
             f"  Endereço: https://sistema-minipa.onrender.com\n"
             f"  Login:    {user.username}\n"
             f"  Senha:    {NOVA_SENHA}\n\n"
-            f"No primeiro acesso você será solicitado a criar uma nova senha pessoal.\n"
-            f"O manual do usuário está anexo neste e-mail.\n\n"
+            f"No primeiro acesso você será solicitado a criar uma nova senha pessoal.\n\n"
             f"Em caso de dúvidas entre em contato com o administrador.\n\n"
             f"Atenciosamente,\nMinipa Precision — Assistência Técnica Autorizada"
         )
         msg.attach(MIMEText(corpo, 'plain'))
-        att = MIMEApplication(manual.read(), _subtype='pdf')
-        att.add_header('Content-Disposition', 'attachment', filename='Manual_Sistema_Minipa.pdf')
-        msg.attach(att)
         with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
             server.starttls()
             server.login(EMAIL_USER, EMAIL_PASS)
@@ -1320,7 +1315,7 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# ── Init DB ──────────────────────────────────────────────────────────────────────────────
+# ── Init DB ──────────────────────────────────────────────────────────────────────────────────
 
 def _init_db():
     import time
