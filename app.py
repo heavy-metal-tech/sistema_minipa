@@ -473,7 +473,7 @@ def email_pecas_autorizada():
         att.add_header('Content-Disposition', 'attachment',
                        filename=f"pecas_por_autorizada_{brt_now().strftime('%Y%m%d')}.pdf")
         msg.attach(att)
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=20) as server:
             server.starttls()
             server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)
@@ -506,7 +506,7 @@ def enviar_email(id):
         attachment = MIMEApplication(pdf_buffer.read(), _subtype='pdf')
         attachment.add_header('Content-Disposition', 'attachment', filename=f"OS_{os_data.id:05d}.pdf")
         msg.attach(attachment)
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=20) as server:
             server.starttls()
             server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)
@@ -1211,7 +1211,7 @@ def enviar_acesso_usuario(id):
             f"Atenciosamente,\nMinipa Precision — Assistência Técnica Autorizada"
         )
         msg.attach(MIMEText(corpo, 'plain'))
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=20) as server:
             server.starttls()
             server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)
