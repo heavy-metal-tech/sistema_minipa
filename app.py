@@ -1,4 +1,4 @@
-import os, io, smtplib, json, secrets
+import os, io, smtplib, json, secrets, threading
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
@@ -41,6 +41,25 @@ EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
 EMAIL_USER = os.environ.get('EMAIL_USER', '')
 EMAIL_PASS = os.environ.get('EMAIL_PASS', '')
 EMAIL_MINIPA = os.environ.get('EMAIL_MINIPA', 'assistencia@minipa.com.br')
+
+def _enviar_email_bg(para, assunto, corpo):
+    """Envia e-mail em background thread para não bloquear a requisição."""
+    def _send():
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = EMAIL_USER
+            msg['To'] = para
+            msg['Subject'] = assunto
+            msg.attach(MIMEText(corpo, 'plain'))
+            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=28) as server:
+                server.starttls()
+                server.login(EMAIL_USER, EMAIL_PASS)
+                server.send_message(msg)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception('Erro ao enviar e-mail para %s', para)
+    t = threading.Thread(target=_send, daemon=True)
+    t.start()
 
 db.init_app(app)
 csrf = CSRFProtect(app)
@@ -1195,30 +1214,18 @@ def enviar_acesso_usuario(id):
     user.password = generate_password_hash(NOVA_SENHA, method='pbkdf2:sha256')
     user.must_change_password = True
     db.session.commit()
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_USER
-        msg['To'] = destino
-        msg['Subject'] = 'Acesso ao Sistema Minipa OS — Credenciais de Acesso'
-        corpo = (
-            f"Olá, {user.nome_completo}!\n\n"
-            f"Seguem suas credenciais de acesso ao Sistema de Ordens de Serviço Minipa:\n\n"
-            f"  Endereço: https://sistema-minipa.onrender.com\n"
-            f"  Login:    {user.username}\n"
-            f"  Senha:    {NOVA_SENHA}\n\n"
-            f"No primeiro acesso você será solicitado a criar uma nova senha pessoal.\n\n"
-            f"Em caso de dúvidas entre em contato com o administrador.\n\n"
-            f"Atenciosamente,\nMinipa Precision — Assistência Técnica Autorizada"
-        )
-        msg.attach(MIMEText(corpo, 'plain'))
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=28) as server:
-            server.starttls()
-            server.login(EMAIL_USER, EMAIL_PASS)
-            server.send_message(msg)
-        flash(f'Credenciais enviadas para {destino} ({user.nome_completo}).', 'success')
-    except Exception as e:
-        app.logger.exception('Erro ao enviar credenciais usuario %s', id)
-        flash(f'Senha redefinida mas erro ao enviar e-mail: {type(e).__name__}: {e}', 'error')
+    corpo = (
+        f"Olá, {user.nome_completo}!\n\n"
+        f"Seguem suas credenciais de acesso ao Sistema de Ordens de Serviço Minipa:\n\n"
+        f"  Endereço: https://sistema-minipa.onrender.com\n"
+        f"  Login:    {user.username}\n"
+        f"  Senha:    {NOVA_SENHA}\n\n"
+        f"No primeiro acesso você será solicitado a criar uma nova senha pessoal.\n\n"
+        f"Em caso de dúvidas entre em contato com o administrador.\n\n"
+        f"Atenciosamente,\nMinipa Precision — Assistência Técnica Autorizada"
+    )
+    _enviar_email_bg(destino, 'Acesso ao Sistema Minipa OS — Credenciais de Acesso', corpo)
+    flash(f'Credenciais enviadas para {destino} ({user.nome_completo}).', 'success')
     return redirect(url_for('dashboard'))
 
 @app.route('/admin/cadastrar_autorizadas_faltantes')
