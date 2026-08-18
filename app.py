@@ -1226,20 +1226,8 @@ def enviar_acesso_usuario(id):
         f"Em caso de dúvidas entre em contato com o administrador.\n\n"
         f"Atenciosamente,\nMinipa Precision — Assistência Técnica Autorizada"
     )
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_USER
-        msg['To'] = destino
-        msg['Subject'] = 'Acesso ao Sistema Minipa OS — Credenciais de Acesso'
-        msg.attach(MIMEText(corpo, 'plain'))
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=28) as server:
-            server.starttls()
-            server.login(EMAIL_USER, EMAIL_PASS)
-            server.send_message(msg)
-        flash(f'Credenciais enviadas para {destino} ({user.nome_completo}).', 'success')
-    except Exception as e:
-        app.logger.exception('Erro ao enviar credenciais usuario %s', id)
-        flash(f'Senha redefinida. Erro ao enviar e-mail para {destino}: {type(e).__name__}: {e}', 'error')
+    _enviar_email_bg(destino, 'Acesso ao Sistema Minipa OS — Credenciais de Acesso', corpo)
+    flash(f'Senha redefinida. E-mail de credenciais sendo enviado para {destino} ({user.nome_completo}).', 'success')
     return redirect(url_for('dashboard'))
 
 @app.route('/admin/cadastrar_autorizadas_faltantes')
