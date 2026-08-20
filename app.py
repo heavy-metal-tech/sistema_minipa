@@ -1240,7 +1240,7 @@ def enviar_acesso_usuario(id):
                 msg.attach(att)
             except Exception:
                 app.logger.exception('Erro ao gerar manual PDF para credenciais')
-            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=28) as server:
+            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
                 server.starttls()
                 server.login(EMAIL_USER, EMAIL_PASS)
                 server.send_message(msg)
