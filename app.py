@@ -1,4 +1,5 @@
 import os, io, smtplib, json, secrets, threading
+import cloudinary, cloudinary.uploader
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
@@ -71,7 +72,7 @@ limiter = Limiter(get_remote_address, app=app, storage_uri="memory://", default_
 def from_json_filter(value):
     try:
         return json.loads(value) if value else []
-    except:
+    except (json.JSONDecodeError, TypeError):
         return []
 
 login_manager = LoginManager(app)
@@ -456,50 +457,57 @@ def email_pecas_autorizada():
         flash('Sem permissão.', 'error')
         return redirect(url_for('dashboard'))
     DESTINO = 'wfmalcato@minipa.com.br'
+    ids = [f.id for f in current_user.autorizadas_supervisionadas] if current_user.is_supervisor else None
+    if ids is not None:
+        filiais = Filial.query.filter(Filial.id.in_(ids)).order_by(Filial.nome).all()
+    else:
+        filiais = Filial.query.order_by(Filial.nome).all()
+    nomes_filiais = ', '.join(f.nome for f in filiais) if filiais else 'Todas'
+    filiais_detalhe = '\n'.join(
+        f"  • {f.nome}{(' — ' + f.cidade + '/' + f.estado) if f.cidade else ''}"
+        for f in filiais
+    )
+    cargo = ('Administrador' if current_user.is_admin else
+             'Gerente' if current_user.is_gerente else 'Supervisor')
+    _now_str = brt_now().strftime('%d/%m/%Y às %H:%M')
+    _date_str = brt_now().strftime('%d/%m/%Y')
+    _date_file = brt_now().strftime('%Y%m%d')
+    _remetente = current_user.nome_completo
     try:
-        ids = [f.id for f in current_user.autorizadas_supervisionadas] if current_user.is_supervisor else None
         buf = _draw_pecas_por_autorizada(filial_ids=ids)
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_USER
-        msg['To'] = DESTINO
-
-        # Monta lista de autorizadas para assunto e corpo
-        if ids is not None:
-            filiais = Filial.query.filter(Filial.id.in_(ids)).order_by(Filial.nome).all()
-        else:
-            filiais = Filial.query.order_by(Filial.nome).all()
-        nomes_filiais = ', '.join(f.nome for f in filiais) if filiais else 'Todas'
-
-        msg['Subject'] = f"Relatório de Peças — {nomes_filiais} — {brt_now().strftime('%d/%m/%Y')}"
-
-        filiais_detalhe = '\n'.join(
-            f"  • {f.nome}{(' — ' + f.cidade + '/' + f.estado) if f.cidade else ''}"
-            for f in filiais
-        )
-        cargo = ('Administrador' if current_user.is_admin else
-                 'Gerente' if current_user.is_gerente else 'Supervisor')
-        body = (
-            f"Prezado William,\n\n"
-            f"Segue em anexo o relatório de peças solicitadas, gerado em "
-            f"{brt_now().strftime('%d/%m/%Y às %H:%M')}.\n\n"
-            f"Autorizada(s) incluída(s) no relatório:\n{filiais_detalhe}\n\n"
-            f"Responsável pelo envio: {current_user.nome_completo} ({cargo})\n\n"
-            f"Atenciosamente,\n{current_user.nome_completo}\n"
-            f"Minipa Precision — Assistência Técnica Autorizada"
-        )
-        msg.attach(MIMEText(body, 'plain'))
-        att = MIMEApplication(buf.read(), _subtype='pdf')
-        att.add_header('Content-Disposition', 'attachment',
-                       filename=f"pecas_por_autorizada_{brt_now().strftime('%Y%m%d')}.pdf")
-        msg.attach(att)
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=28) as server:
-            server.starttls()
-            server.login(EMAIL_USER, EMAIL_PASS)
-            server.send_message(msg)
-        flash(f'Relatório enviado para {DESTINO}!', 'success')
+        pdf_bytes = buf.read()
     except Exception:
-        app.logger.exception('Erro ao enviar relatório de peças')
-        flash('Erro ao enviar e-mail. Verifique as configurações SMTP.', 'error')
+        app.logger.exception('Erro ao gerar relatório de peças')
+        flash('Erro ao gerar relatório. Tente novamente.', 'error')
+        return redirect(url_for('dashboard'))
+    assunto = f"Relatório de Peças — {nomes_filiais} — {_date_str}"
+    corpo = (
+        f"Prezado William,\n\n"
+        f"Segue em anexo o relatório de peças solicitadas, gerado em {_now_str}.\n\n"
+        f"Autorizada(s) incluída(s) no relatório:\n{filiais_detalhe}\n\n"
+        f"Responsável pelo envio: {_remetente} ({cargo})\n\n"
+        f"Atenciosamente,\n{_remetente}\n"
+        f"Minipa Precision — Assistência Técnica Autorizada"
+    )
+    filename_pdf = f"pecas_por_autorizada_{_date_file}.pdf"
+    def _enviar_relatorio():
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = EMAIL_USER
+            msg['To'] = DESTINO
+            msg['Subject'] = assunto
+            msg.attach(MIMEText(corpo, 'plain'))
+            att = MIMEApplication(pdf_bytes, _subtype='pdf')
+            att.add_header('Content-Disposition', 'attachment', filename=filename_pdf)
+            msg.attach(att)
+            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
+                server.starttls()
+                server.login(EMAIL_USER, EMAIL_PASS)
+                server.send_message(msg)
+        except Exception:
+            app.logger.exception('Erro ao enviar relatório de peças para %s', DESTINO)
+    threading.Thread(target=_enviar_relatorio, daemon=True).start()
+    flash(f'Relatório sendo enviado para {DESTINO}!', 'success')
     return redirect(url_for('dashboard'))
 
 @app.route('/enviar_email/<int:id>', methods=['POST'])
@@ -509,33 +517,45 @@ def enviar_email(id):
     if not _can_access_os(os_data):
         flash('Sem permissão.', 'error')
         return redirect(url_for('dashboard'))
-    # Usa o email da autorizada se cadastrado, caso contrário usa o email global da Minipa
     destino = (os_data.filial.email if os_data.filial and os_data.filial.email else None) or EMAIL_MINIPA
     try:
-        pdf_buffer = draw_pdf_os(os_data)
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_USER
-        msg['To'] = destino
-        msg['Subject'] = f"Solicitação de peças – OS nº {os_data.id:05d}"
-        body = (f"Prezados,\n\nInformamos a abertura da Ordem de Serviço nº {os_data.id:05d} "
-                f"referente ao equipamento modelo {os_data.equipamento} (S/N: {os_data.serie}).\n"
-                f"Segue em anexo relatório contendo defeito apresentado e peças solicitadas.\n\n"
-                f"Atenciosamente,\n{current_user.nome_completo}\nMinipa Precision — Assistência Técnica Autorizada")
-        msg.attach(MIMEText(body, 'plain'))
-        attachment = MIMEApplication(pdf_buffer.read(), _subtype='pdf')
-        attachment.add_header('Content-Disposition', 'attachment', filename=f"OS_{os_data.id:05d}.pdf")
-        msg.attach(attachment)
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=28) as server:
-            server.starttls()
-            server.login(EMAIL_USER, EMAIL_PASS)
-            server.send_message(msg)
-        # Atualiza status
-        os_data.status = 'Enviada para fabricante'
-        db.session.commit()
-        flash('E-mail enviado com sucesso para a Minipa!', 'success')
+        pdf_bytes = draw_pdf_os(os_data).read()
     except Exception:
-        app.logger.exception('Erro ao enviar e-mail OS %s', id)
-        flash('Erro ao enviar e-mail. Verifique as configurações SMTP.', 'error')
+        app.logger.exception('Erro ao gerar PDF da OS %s', id)
+        flash('Erro ao gerar PDF. Tente novamente.', 'error')
+        return redirect(url_for('ver_os', id=id))
+    os_num = f"{os_data.id:05d}"
+    equip = os_data.equipamento
+    serie = os_data.serie
+    nome_user = current_user.nome_completo
+    assunto = f"Solicitação de peças – OS nº {os_num}"
+    corpo = (f"Prezados,\n\nInformamos a abertura da Ordem de Serviço nº {os_num} "
+             f"referente ao equipamento modelo {equip} (S/N: {serie}).\n"
+             f"Segue em anexo relatório contendo defeito apresentado e peças solicitadas.\n\n"
+             f"Atenciosamente,\n{nome_user}\nMinipa Precision — Assistência Técnica Autorizada")
+    # Atualiza status antes de sair da requisição
+    os_data.status = 'Enviada para fabricante'
+    db.session.add(LogOS(os_id=os_data.id, usuario=nome_user, tipo='status',
+                         descricao='Status alterado para "Enviada para fabricante" via envio de e-mail'))
+    db.session.commit()
+    def _enviar_os():
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = EMAIL_USER
+            msg['To'] = destino
+            msg['Subject'] = assunto
+            msg.attach(MIMEText(corpo, 'plain'))
+            att = MIMEApplication(pdf_bytes, _subtype='pdf')
+            att.add_header('Content-Disposition', 'attachment', filename=f"OS_{os_num}.pdf")
+            msg.attach(att)
+            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
+                server.starttls()
+                server.login(EMAIL_USER, EMAIL_PASS)
+                server.send_message(msg)
+        except Exception:
+            app.logger.exception('Erro ao enviar e-mail OS %s', os_num)
+    threading.Thread(target=_enviar_os, daemon=True).start()
+    flash('E-mail sendo enviado para a Minipa!', 'success')
     return redirect(url_for('ver_os', id=id))
 
 # ── API ─────────────────────────────────────────────────────────────────────────────────────
@@ -613,7 +633,9 @@ def dashboard():
         )
     if status_filter:
         query = query.filter_by(status=status_filter)
-    ordens = query.order_by(OrdemServico.id.desc()).all()
+    page = request.args.get('page', 1, type=int)
+    paginacao = query.order_by(OrdemServico.id.desc()).paginate(page=page, per_page=25, error_out=False)
+    ordens = paginacao
     estoque = Estoque.query.all()
 
     # Stats — uma query GROUP BY em vez de N queries separadas
@@ -645,8 +667,13 @@ def dashboard():
     # Gráfico OS por mês (últimos 6 meses)
     meses = []
     os_por_mes = []
+    _now = brt_now().replace(day=1)
     for i in range(5, -1, -1):
-        d = brt_now().replace(day=1) - timedelta(days=i * 28)
+        total_month = _now.month - i
+        if total_month <= 0:
+            d = datetime(_now.year - 1, total_month + 12, 1)
+        else:
+            d = datetime(_now.year, total_month, 1)
         count = base_q.filter(
             db.extract('month', OrdemServico.data_abertura) == d.month,
             db.extract('year', OrdemServico.data_abertura) == d.year
@@ -1251,7 +1278,7 @@ def enviar_acesso_usuario(id):
     else:
         flash(f'{user.nome_completo}: nenhuma autorizada com esse nome tem e-mail cadastrado.', 'error')
         return redirect(url_for('dashboard'))
-    NOVA_SENHA = '123456'
+    NOVA_SENHA = secrets.token_urlsafe(8)
     user.password = generate_password_hash(NOVA_SENHA, method='pbkdf2:sha256')
     user.must_change_password = True
     db.session.commit()

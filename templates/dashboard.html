@@ -131,7 +131,7 @@
           <tr><th>OS</th><th>Data</th><th>Cliente</th><th>Equipamento</th><th>Status</th><th>Valor</th><th>Ações</th></tr>
         </thead>
         <tbody>
-          {% for os in ordens %}
+          {% for os in ordens.items %}
           <tr>
             <td><strong>#{{ '%05d' % os.id }}</strong></td>
             <td style="color:#6b7280;">{{ os.data_abertura.strftime('%d/%m/%Y') if os.data_abertura else '—' }}</td>
@@ -158,6 +158,17 @@
           {% endfor %}
         </tbody>
       </table>
+      {% if ordens.pages > 1 %}
+      <div style="display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap;">
+        {% if ordens.has_prev %}
+        <a href="{{ url_for('dashboard', page=ordens.prev_num, q=q, status=status_filter) }}" class="btn btn-outline btn-sm">← Anterior</a>
+        {% endif %}
+        <span style="color:#6b7280;font-size:13px;">Página {{ ordens.page }} de {{ ordens.pages }} ({{ ordens.total }} OS)</span>
+        {% if ordens.has_next %}
+        <a href="{{ url_for('dashboard', page=ordens.next_num, q=q, status=status_filter) }}" class="btn btn-outline btn-sm">Próxima →</a>
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
   </div>
 
