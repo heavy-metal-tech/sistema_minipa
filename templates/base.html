@@ -149,10 +149,66 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   border-left: 3px solid var(--blue);
   border-radius: 0 6px 6px 0; margin-bottom: 18px;
 }
+
+/* ── Menu móvel ── */
+.nav-toggle {
+  display: none; position: fixed; top: 9px; left: 10px; z-index: 120;
+  width: 38px; height: 38px; border-radius: 9px; border: 1.5px solid var(--border);
+  background: #fff; cursor: pointer; align-items: center; justify-content: center;
+  color: var(--blue-deeper); padding: 0;
+}
+.nav-toggle svg { width: 19px; height: 19px; }
+.nav-backdrop {
+  display: none; position: fixed; inset: 0; z-index: 99;
+  background: rgba(0,0,0,.45);
+}
+body.nav-open .nav-backdrop { display: block; }
+
+@media (max-width: 860px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,.25);
+  }
+  body.nav-open .sidebar { transform: translateX(0); }
+  .nav-toggle { display: inline-flex; }
+  .main { margin-left: 0; }
+
+  .topbar { padding: 12px 14px 12px 58px; gap: 10px; }
+  .topbar h1 { font-size: 15px; }
+  .topbar-actions { gap: 7px; }
+  .content { padding: 16px 14px; }
+  .flash-wrap { padding: 12px 14px 0; }
+  .card { padding: 16px; border-radius: 10px; }
+
+  /* Formulários empilham em uma coluna */
+  .col-2, .col-3, .col-4 { grid-template-columns: 1fr; }
+
+  table { font-size: 12.5px; }
+  thead th { padding: 8px 10px; }
+  tbody td { padding: 9px 10px; }
+
+  /* Alvos de toque maiores */
+  .btn { padding: 10px 16px; }
+  .btn-sm { padding: 8px 12px; font-size: 12px; }
+  .form-control { font-size: 16px; }  /* evita zoom automático no iOS */
+}
+
+@media (max-width: 480px) {
+  .topbar { flex-wrap: wrap; }
+  .topbar-actions { width: 100%; }
+  .topbar-actions .btn { flex: 1; justify-content: center; }
+}
 </style>
 {% block extra_css %}{% endblock %}
 </head>
 <body>
+<button class="nav-toggle" id="nav-toggle" aria-label="Abrir menu" aria-expanded="false">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+    <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+  </svg>
+</button>
+<div class="nav-backdrop" id="nav-backdrop"></div>
 <aside class="sidebar">
   <div class="sidebar-logo">
     <img src="{{ url_for('static', filename='minipa.png') }}" alt="Minipa">
@@ -244,5 +300,29 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   {% endwith %}
   {% block content %}{% endblock %}
 </div>
+<script>
+(function () {
+  var toggle = document.getElementById('nav-toggle');
+  var backdrop = document.getElementById('nav-backdrop');
+  function setOpen(open) {
+    document.body.classList.toggle('nav-open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  toggle.addEventListener('click', function () {
+    setOpen(!document.body.classList.contains('nav-open'));
+  });
+  backdrop.addEventListener('click', function () { setOpen(false); });
+  // Fecha ao navegar ou ao voltar para desktop
+  document.querySelectorAll('.sidebar a').forEach(function (a) {
+    a.addEventListener('click', function () { setOpen(false); });
+  });
+  window.addEventListener('resize', function () {
+    if (window.innerWidth > 860) setOpen(false);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') setOpen(false);
+  });
+})();
+</script>
 </body>
 </html>
