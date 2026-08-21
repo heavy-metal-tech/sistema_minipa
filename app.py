@@ -1278,7 +1278,8 @@ def enviar_acesso_usuario(id):
     else:
         flash(f'{user.nome_completo}: nenhuma autorizada com esse nome tem e-mail cadastrado.', 'error')
         return redirect(url_for('dashboard'))
-    NOVA_SENHA = secrets.token_urlsafe(8)
+    # Senha fixa: o usuário é obrigado a trocá-la no primeiro acesso
+    NOVA_SENHA = '123456'
     user.password = generate_password_hash(NOVA_SENHA, method='pbkdf2:sha256')
     user.must_change_password = True
     db.session.commit()
