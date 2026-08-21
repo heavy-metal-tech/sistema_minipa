@@ -301,7 +301,7 @@
               <form method="POST" action="{{ url_for('enviar_acesso_usuario', id=u.id) }}" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit"
-                  onclick="return confirm('Enviar login e senha de {{ u.nome_completo|e }}?\n\nO e-mail vai para o endereço cadastrado na tela de Autorizadas.\nA senha será redefinida para 123456.')"
+                  onclick="return confirm('Enviar login e senha de {{ u.nome_completo|e }}?\n\nO e-mail vai para o endereço cadastrado na tela de Autorizadas.\nUma nova senha será gerada e enviada junto.')"
                   style="background:none;border:none;cursor:pointer;color:#059669;font-size:15px;padding:2px 5px;"
                   title="Enviar credenciais">📧</button>
               </form>
