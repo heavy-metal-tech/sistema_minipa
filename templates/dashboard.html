@@ -287,17 +287,13 @@
             <td style="display:flex;gap:4px;align-items:center;">
               <button onclick="abrirModal({{ u.id }}, '{{ u.nome_completo|e }}', '{{ u.username|e }}', '{{ 'admin' if u.is_admin else ('gerente' if u.is_gerente else ('supervisor' if u.is_supervisor else 'tecnico')) }}', '{{ u.email|e if u.email else '' }}')"
                 style="background:none;border:none;cursor:pointer;color:#0077c8;font-size:15px;padding:2px 5px;" title="Editar">✏️</button>
-              {% if (u.filial and u.filial.email) or u.is_gerente or u.is_admin %}
               <form method="POST" action="{{ url_for('enviar_acesso_usuario', id=u.id) }}" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit"
-                  onclick="return confirm('Enviar login e senha para {{ u.filial.email if (u.filial and u.filial.email) else 'e-mail configurado' }}?\n\nA senha será redefinida para 123456.')"
+                  onclick="return confirm('Enviar login e senha de {{ u.nome_completo|e }}?\n\nO e-mail vai para o endereço cadastrado na tela de Autorizadas.\nA senha será redefinida para 123456.')"
                   style="background:none;border:none;cursor:pointer;color:#059669;font-size:15px;padding:2px 5px;"
                   title="Enviar credenciais">📧</button>
               </form>
-              {% else %}
-              <span style="font-size:15px;padding:2px 5px;opacity:.25;" title="Sem e-mail cadastrado na autorizada">📧</span>
-              {% endif %}
               {% if u.id != current_user.id %}
               <form method="POST" action="{{ url_for('delete_usuario', id=u.id) }}" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

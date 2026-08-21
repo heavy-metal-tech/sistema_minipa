@@ -1201,6 +1201,37 @@ def _gerar_manual_pdf():
     buf.seek(0)
     return buf
 
+def _norm_nome(s):
+    """Nome comparável: sem acentos, só letras e números, minúsculo."""
+    import unicodedata
+    s = unicodedata.normalize('NFKD', s or '')
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    return ''.join(c for c in s.lower() if c.isalnum())
+
+def _autorizada_do_usuario(user):
+    """Autorizada cujo nome corresponde ao do usuário. None se não houver correspondência."""
+    alvos = {_norm_nome(user.nome_completo), _norm_nome(user.username)}
+    alvos = {a for a in alvos if len(a) >= 3}
+    if not alvos:
+        return None
+    melhor, melhor_score = None, 0
+    for f in Filial.query.all():
+        fn = _norm_nome(f.nome)
+        if not fn:
+            continue
+        for alvo in alvos:
+            if fn == alvo:
+                score = 1000 + len(alvo)
+            elif fn.startswith(alvo) or alvo.startswith(fn):
+                score = 500 + len(alvo)
+            elif alvo in fn or fn in alvo:
+                score = 100 + len(alvo)
+            else:
+                continue
+            if score > melhor_score:
+                melhor, melhor_score = f, score
+    return melhor
+
 @app.route('/usuarios/enviar_acesso/<int:id>', methods=['POST'])
 @login_required
 def enviar_acesso_usuario(id):
@@ -1208,15 +1239,17 @@ def enviar_acesso_usuario(id):
         flash('Sem permissão.', 'error')
         return redirect(url_for('dashboard'))
     user = User.query.get_or_404(id)
-    # Fonte principal: e-mail da autorizada, conforme cadastrado na tela de Autorizadas
-    if user.filial and user.filial.email:
-        destino, origem = user.filial.email, user.filial.nome
+    # Destino vem da tela de Autorizadas, casando pelo NOME do usuário com o da autorizada.
+    # Independente do vínculo de supervisão (filial_id), que é outra coisa.
+    autorizada = _autorizada_do_usuario(user)
+    if autorizada and autorizada.email:
+        destino, origem = autorizada.email, autorizada.nome
     elif user.email:
         destino, origem = user.email, 'e-mail pessoal'
     elif user.is_gerente or user.is_admin:
         destino, origem = EMAIL_USER, 'e-mail do sistema'
     else:
-        flash(f'Usuário {user.nome_completo} não tem e-mail cadastrado na autorizada.', 'error')
+        flash(f'{user.nome_completo}: nenhuma autorizada com esse nome tem e-mail cadastrado.', 'error')
         return redirect(url_for('dashboard'))
     NOVA_SENHA = '123456'
     user.password = generate_password_hash(NOVA_SENHA, method='pbkdf2:sha256')
