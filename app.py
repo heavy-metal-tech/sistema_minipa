@@ -1208,8 +1208,14 @@ def enviar_acesso_usuario(id):
         flash('Sem permissão.', 'error')
         return redirect(url_for('dashboard'))
     user = User.query.get_or_404(id)
-    destino = user.email or (user.filial.email if user.filial else None) or (EMAIL_USER if (user.is_gerente or user.is_admin) else None)
-    if not destino:
+    # Fonte principal: e-mail da autorizada, conforme cadastrado na tela de Autorizadas
+    if user.filial and user.filial.email:
+        destino, origem = user.filial.email, user.filial.nome
+    elif user.email:
+        destino, origem = user.email, 'e-mail pessoal'
+    elif user.is_gerente or user.is_admin:
+        destino, origem = EMAIL_USER, 'e-mail do sistema'
+    else:
         flash(f'Usuário {user.nome_completo} não tem e-mail cadastrado na autorizada.', 'error')
         return redirect(url_for('dashboard'))
     NOVA_SENHA = '123456'
@@ -1247,7 +1253,7 @@ def enviar_acesso_usuario(id):
         except Exception:
             app.logger.exception('Erro ao enviar credenciais para %s', destino)
     threading.Thread(target=_enviar_credenciais, daemon=True).start()
-    flash(f'Senha redefinida. E-mail de credenciais sendo enviado para {destino} ({user.nome_completo}).', 'success')
+    flash(f'Senha de {user.nome_completo} redefinida. Enviando para {destino} — {origem}.', 'success')
     return redirect(url_for('dashboard'))
 
 @app.route('/admin/cadastrar_autorizadas_faltantes')
