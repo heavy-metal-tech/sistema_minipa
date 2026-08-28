@@ -694,11 +694,12 @@ def dashboard():
     ).limit(5).all()
 
     usuarios = User.query.order_by(User.is_admin.desc(), User.nome_completo).all()
+    filiais = Filial.query.order_by(Filial.nome).all()
     return render_template('dashboard.html', ordens=ordens, estoque=estoque,
                            stats=stats, q=q, status_filter=status_filter,
                            meses=meses, os_por_mes=os_por_mes,
                            status_data=status_data,
-                           top_equip=top_equip, usuarios=usuarios)
+                           top_equip=top_equip, usuarios=usuarios, filiais=filiais)
 
 @app.route('/nova_os', methods=['GET', 'POST'])
 @login_required
@@ -1019,20 +1020,26 @@ def novo_tecnico():
             is_supervisor=(cargo == 'supervisor'),
             must_change_password=True
         )
-        # Técnico é vinculado automaticamente à autorizada de mesmo nome, se existir
-        auto = None
+        # Autorizada: escolha explícita, detecção pelo nome, ou nenhuma (usuário interno)
+        escolha = request.form.get('filial_id', 'auto')
+        vinculada, sem_match = None, False
         if cargo == 'tecnico':
-            auto = _autorizada_do_usuario(u)
-            if auto:
-                u.filial_id = auto.id
+            if escolha == 'auto':
+                vinculada = _autorizada_do_usuario(u, strict=True)
+                sem_match = vinculada is None
+            elif escolha:
+                vinculada = Filial.query.get(int(escolha))
+            if vinculada:
+                u.filial_id = vinculada.id
         db.session.add(u)
         try:
             db.session.commit()
-            if auto:
-                flash(f'Usuário {u.nome_completo} cadastrado e vinculado à autorizada {auto.nome}.', 'success')
-            elif cargo == 'tecnico':
-                flash(f'Usuário {u.nome_completo} cadastrado, mas nenhuma autorizada com esse nome foi '
-                      f'encontrada — vincule manualmente em Autorizadas, ou ele não verá OS alguma.', 'error')
+            if vinculada:
+                flash(f'Usuário {u.nome_completo} cadastrado e vinculado à autorizada {vinculada.nome}.', 'success')
+            elif sem_match:
+                flash(f'Usuário {u.nome_completo} cadastrado sem autorizada — nenhuma com esse nome foi '
+                      f'encontrada. Técnico sem autorizada não vê OS alguma; escolha uma em Autorizadas '
+                      f'se for o caso.', 'error')
             else:
                 flash(f'Usuário {u.nome_completo} cadastrado com sucesso!', 'success')
         except Exception:
@@ -1059,7 +1066,7 @@ def autorizadas():
             for u in User.query.filter_by(filial_id=None).all():
                 if u.is_admin or u.is_gerente or u.is_supervisor:
                     continue
-                if _autorizada_do_usuario(u) is f:
+                if _autorizada_do_usuario(u, strict=True) is f:
                     u.filial_id = f.id
                     vinculados.append(u.nome_completo)
             if vinculados:
@@ -1281,8 +1288,12 @@ def _norm_nome(s):
     s = ''.join(c for c in s if not unicodedata.combining(c))
     return ''.join(c for c in s.lower() if c.isalnum())
 
-def _autorizada_do_usuario(user):
-    """Autorizada cujo nome corresponde ao do usuário. None se não houver correspondência."""
+def _autorizada_do_usuario(user, strict=False):
+    """Autorizada cujo nome corresponde ao do usuário. None se não houver correspondência.
+
+    strict=True aceita apenas nome idêntico ou prefixo — usado no vínculo automático,
+    onde uma coincidência parcial daria acesso às OS da autorizada errada.
+    """
     alvos = {_norm_nome(user.nome_completo), _norm_nome(user.username)}
     alvos = {a for a in alvos if len(a) >= 3}
     if not alvos:
@@ -1303,6 +1314,8 @@ def _autorizada_do_usuario(user):
                 continue
             if score > melhor_score:
                 melhor, melhor_score = f, score
+    if strict and melhor_score < 500:
+        return None
     return melhor
 
 @app.route('/usuarios/enviar_acesso/<int:id>', methods=['POST'])
