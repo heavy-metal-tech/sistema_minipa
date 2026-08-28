@@ -1019,10 +1019,22 @@ def novo_tecnico():
             is_supervisor=(cargo == 'supervisor'),
             must_change_password=True
         )
+        # Técnico é vinculado automaticamente à autorizada de mesmo nome, se existir
+        auto = None
+        if cargo == 'tecnico':
+            auto = _autorizada_do_usuario(u)
+            if auto:
+                u.filial_id = auto.id
         db.session.add(u)
         try:
             db.session.commit()
-            flash(f'Usuário {u.nome_completo} cadastrado com sucesso!', 'success')
+            if auto:
+                flash(f'Usuário {u.nome_completo} cadastrado e vinculado à autorizada {auto.nome}.', 'success')
+            elif cargo == 'tecnico':
+                flash(f'Usuário {u.nome_completo} cadastrado, mas nenhuma autorizada com esse nome foi '
+                      f'encontrada — vincule manualmente em Autorizadas, ou ele não verá OS alguma.', 'error')
+            else:
+                flash(f'Usuário {u.nome_completo} cadastrado com sucesso!', 'success')
         except Exception:
             db.session.rollback()
             flash('Erro ao cadastrar usuário. Verifique se o username já existe.', 'error')
@@ -1041,7 +1053,19 @@ def autorizadas():
                        estado=request.form.get('estado'),
                        email=request.form.get('email') or None)
             db.session.add(f)
-            flash('Autorizada cadastrada!', 'success')
+            db.session.flush()  # precisa do id para vincular
+            # Vincula automaticamente técnicos de mesmo nome que ainda não têm autorizada
+            vinculados = []
+            for u in User.query.filter_by(filial_id=None).all():
+                if u.is_admin or u.is_gerente or u.is_supervisor:
+                    continue
+                if _autorizada_do_usuario(u) is f:
+                    u.filial_id = f.id
+                    vinculados.append(u.nome_completo)
+            if vinculados:
+                flash(f'Autorizada cadastrada e vinculada a: {", ".join(vinculados)}.', 'success')
+            else:
+                flash('Autorizada cadastrada!', 'success')
         elif action == 'set_email':
             f = Filial.query.get(int(request.form.get('id')))
             if f:
