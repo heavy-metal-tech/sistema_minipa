@@ -1047,6 +1047,20 @@ def novo_tecnico():
             flash('Erro ao cadastrar usuário. Verifique se o username já existe.', 'error')
     return redirect(url_for('dashboard'))
 
+def _username_para_filial(nome):
+    """Gera o login da autorizada: 'Central Técnica (MT)' -> 'CentralTecnica'."""
+    import unicodedata, re
+    s = unicodedata.normalize('NFKD', nome or '')
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r'\([^)]*\)', ' ', s)            # descarta o que está entre parênteses
+    s = re.sub(r'[^A-Za-z0-9 ]', ' ', s)        # descarta pontuação
+    IGNORAR = {'e', 'de', 'da', 'do', 'das', 'dos', 'ltda', 'me', 'epp',
+               'eireli', 'sa', 'cia', 'com', 'ind', 'servicos', 'comercio'}
+    palavras = [p for p in s.split() if p.lower() not in IGNORAR] or s.split()
+    if not palavras:
+        return None
+    return ''.join(p[0].upper() + p[1:] for p in palavras[:2])[:50]
+
 @app.route('/autorizadas', methods=['GET', 'POST'])
 @login_required
 def autorizadas():
@@ -1069,10 +1083,30 @@ def autorizadas():
                 if _autorizada_do_usuario(u, strict=True) is f:
                     u.filial_id = f.id
                     vinculados.append(u.nome_completo)
-            if vinculados:
+            # Cria o login da autorizada, salvo se algum usuário já tiver sido adotado acima
+            login_novo = None
+            if not vinculados:
+                uname = _username_para_filial(f.nome)
+                existe = uname and User.query.filter(
+                    db.func.lower(User.username) == uname.lower()).first()
+                if uname and not existe:
+                    login_novo = User(
+                        username=uname,
+                        password=generate_password_hash('123456', method='pbkdf2:sha256'),
+                        nome_completo=f.nome,
+                        filial_id=f.id,
+                        must_change_password=True,
+                    )
+                    db.session.add(login_novo)
+
+            if login_novo:
+                flash(f'Autorizada cadastrada! Login criado: {login_novo.username} — senha 123456 '
+                      f'(troca obrigatória no primeiro acesso). Use o botão 📧 para enviar as credenciais.',
+                      'success')
+            elif vinculados:
                 flash(f'Autorizada cadastrada e vinculada a: {", ".join(vinculados)}.', 'success')
             else:
-                flash('Autorizada cadastrada!', 'success')
+                flash('Autorizada cadastrada! Já existia um login com esse nome.', 'success')
         elif action == 'set_email':
             f = Filial.query.get(int(request.form.get('id')))
             if f:
