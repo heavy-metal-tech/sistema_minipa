@@ -115,6 +115,8 @@ def _can_access_os(os_data):
     if current_user.is_supervisor:
         ids = [f.id for f in current_user.autorizadas_supervisionadas]
         return os_data.filial_id in ids if ids else False
+    if not current_user.filial_id:
+        return False
     return os_data.filial_id == current_user.filial_id
 
 STATUSES = [
@@ -623,6 +625,9 @@ def dashboard():
         base_q = base_q.filter(OrdemServico.filial_id.in_(ids)) if ids else base_q.filter(db.false())
     elif current_user.filial_id:
         base_q = base_q.filter_by(filial_id=current_user.filial_id)
+    else:
+        # Técnico sem autorizada não vê OS alguma (nunca todas).
+        base_q = base_q.filter(db.false())
 
     # OS list with search/filter
     query = base_q
