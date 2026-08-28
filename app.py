@@ -1050,8 +1050,18 @@ def autorizadas():
             user = User.query.get(int(request.form.get('user_id')))
             filial_id = request.form.get('filial_id')
             if user:
-                user.filial_id = int(filial_id) if filial_id else None
-            flash('Usuário vinculado!', 'success')
+                fid = int(filial_id) if filial_id else None
+                user.filial_id = fid
+                if user.is_supervisor and fid:
+                    # Supervisor enxerga OS pela relação múltipla; só filial_id não dá acesso.
+                    f = Filial.query.get(fid)
+                    if f and f not in user.autorizadas_supervisionadas:
+                        user.autorizadas_supervisionadas.append(f)
+                    flash(f'{user.nome_completo} agora supervisiona {f.nome}.', 'success')
+                elif fid:
+                    flash(f'{user.nome_completo} vinculado a {Filial.query.get(fid).nome}.', 'success')
+                else:
+                    flash(f'{user.nome_completo} sem autorizada (vê tudo).', 'success')
         elif action == 'vincular_supervisor':
             user = User.query.get(int(request.form.get('supervisor_id')))
             filial_ids = request.form.getlist('supervisor_filiais[]')
