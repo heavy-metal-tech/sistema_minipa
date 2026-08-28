@@ -1058,6 +1058,13 @@ def autorizadas():
                     if f and f not in user.autorizadas_supervisionadas:
                         user.autorizadas_supervisionadas.append(f)
                     flash(f'{user.nome_completo} agora supervisiona {f.nome}.', 'success')
+                elif (user.is_admin or user.is_gerente) and fid:
+                    # Admin e gerente veem todas as OS: agrupar autorizadas exige perfil Supervisor.
+                    user.filial_id = None
+                    flash(f'{user.nome_completo} é {"administrador" if user.is_admin else "gerente"} '
+                          f'e já vê todas as OS — o vínculo não foi aplicado. Para que responda por '
+                          f'um grupo de autorizadas, mude o nível para Supervisor no Dashboard e '
+                          f'defina as autorizadas em "Supervisores por Região".', 'error')
                 elif fid:
                     flash(f'{user.nome_completo} vinculado a {Filial.query.get(fid).nome}.', 'success')
                 else:
