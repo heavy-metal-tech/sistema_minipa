@@ -75,6 +75,11 @@ def from_json_filter(value):
     except (json.JSONDecodeError, TypeError):
         return []
 
+@app.template_filter('eh_pdf')
+def eh_pdf_filter(caminho):
+    """True se o anexo for PDF — exibido como link, não como miniatura."""
+    return bool(caminho) and caminho.lower().split('?')[0].endswith('.pdf')
+
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
@@ -95,8 +100,11 @@ def rate_limit_exceeded(e):
 
 # ── Helpers ──────────────────────────────────────────────────────
 
+IMAGENS_EXT = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp', 'tif', 'tiff'}
+
 def salvar_foto(foto):
-    """Upload photo to Cloudinary if credentials are set, otherwise skip."""
+    """Upload para o Cloudinary. PDF vai como 'raw': a entrega de PDF pela rota
+    /image/upload é bloqueada por padrão nas contas Cloudinary."""
     if not foto or not foto.filename:
         return None
     cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME')
@@ -104,8 +112,10 @@ def salvar_foto(foto):
     api_secret = os.environ.get('CLOUDINARY_API_SECRET')
     if not (cloud_name and api_key and api_secret):
         return None
+    ext = foto.filename.rsplit('.', 1)[-1].lower() if '.' in foto.filename else ''
+    tipo = 'image' if ext in IMAGENS_EXT else 'raw'
     cloudinary.config(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
-    result = cloudinary.uploader.upload(foto, folder='minipa_os')
+    result = cloudinary.uploader.upload(foto, folder='minipa_os', resource_type=tipo)
     return result.get('secure_url')
 
 def _can_access_os(os_data):
