@@ -573,7 +573,16 @@ def enviar_email(id):
     destino = EMAIL_MINIPA
     email_autorizada = os_data.filial.email if os_data.filial and os_data.filial.email else None
     nome_autorizada = os_data.filial.nome if os_data.filial else 'Autorizada não informada'
-    copias = [e for e in (EMAIL_MATRIZ, email_autorizada) if e and e != destino]
+    # Quem escalou o pedido também recebe cópia — pode ser a principal da região,
+    # não a autorizada que abriu a OS.
+    email_solicitante = (current_user.filial.email
+                         if current_user.filial and current_user.filial.email else None)
+    nome_solicitante_filial = current_user.filial.nome if current_user.filial else None
+    copias, vistos = [], {destino}
+    for e in (EMAIL_MATRIZ, email_autorizada, email_solicitante):
+        if e and e not in vistos:
+            copias.append(e)
+            vistos.add(e)
     try:
         pdf_bytes = draw_pdf_os(os_data).read()
     except Exception:
@@ -588,8 +597,9 @@ def enviar_email(id):
     corpo = (f"Prezados,\n\nInformamos a abertura da Ordem de Serviço nº {os_num} "
              f"referente ao equipamento modelo {equip} (S/N: {serie}).\n"
              f"Segue em anexo relatório contendo defeito apresentado e peças solicitadas.\n\n"
-             f"Autorizada solicitante: {nome_autorizada}\n"
-             f"Solicitado por: {nome_user}\n\n"
+             f"Autorizada da OS: {nome_autorizada}\n"
+             f"Solicitado por: {nome_user}"
+             f"{f' ({nome_solicitante_filial})' if nome_solicitante_filial and nome_solicitante_filial != nome_autorizada else ''}\n\n"
              f"Atenciosamente,\n{nome_user}\nMinipa Precision — Assistência Técnica Autorizada")
     # Atualiza status antes de sair da requisição
     os_data.status = 'Enviada para fabricante'
