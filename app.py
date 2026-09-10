@@ -54,7 +54,7 @@ def _enviar_email_bg(para, assunto, corpo):
             msg['To'] = para
             msg['Subject'] = assunto
             msg.attach(MIMEText(corpo, 'plain'))
-            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=28) as server:
+            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
                 server.starttls()
                 server.login(EMAIL_USER, EMAIL_PASS)
                 server.send_message(msg)
@@ -119,6 +119,34 @@ def salvar_foto(foto):
     cloudinary.config(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
     result = cloudinary.uploader.upload(foto, folder='minipa_os', resource_type=tipo)
     return result.get('secure_url')
+
+STATUS_AVISA_MATRIZ = ('Aguardando peça', 'Peça enviada')
+
+def _notificar_matriz_status(os_data, status_anterior, novo_status, usuario):
+    """Avisa a Matriz quando a OS entra num status que depende da Minipa."""
+    if novo_status not in STATUS_AVISA_MATRIZ or novo_status == status_anterior:
+        return
+    if not EMAIL_MATRIZ:
+        return
+    # Coleta tudo aqui: a thread de envio não acessa o banco.
+    os_num = f"{os_data.id:05d}"
+    autorizada = os_data.filial.nome if os_data.filial else 'não informada'
+    pecas = [f"  • {p.quantidade}x {p.codigo or 's/ código'} — {p.descricao or 's/ descrição'}"
+             for p in os_data.pecas]
+    lista_pecas = '\n'.join(pecas) if pecas else '  (nenhuma peça cadastrada na OS)'
+    assunto = f"OS nº {os_num} — {novo_status} — {autorizada}"
+    corpo = (
+        f"A Ordem de Serviço nº {os_num} mudou de status.\n\n"
+        f"  Status:      {status_anterior or '—'} → {novo_status}\n"
+        f"  Autorizada:  {autorizada}\n"
+        f"  Equipamento: {os_data.equipamento or '—'} (S/N: {os_data.serie or '—'})\n"
+        f"  Cliente:     {os_data.cliente or '—'}\n"
+        f"  Alterado por: {usuario}\n\n"
+        f"Peças da OS:\n{lista_pecas}\n\n"
+        f"Acompanhe em: https://sistema-minipa.onrender.com/os/{os_data.id}\n\n"
+        f"Minipa Precision — Sistema de Ordens de Serviço"
+    )
+    _enviar_email_bg(EMAIL_MATRIZ, assunto, corpo)
 
 def _can_access_os(os_data):
     """Verifica se o usuário atual tem acesso à OS (por filial)."""
@@ -869,7 +897,11 @@ def editar_os(id):
             db.session.add(LogOS(os_id=os_data.id, usuario=current_user.nome_completo,
                                  tipo='edicao', descricao='OS editada'))
         db.session.commit()
-        flash('OS atualizada com sucesso!', 'success')
+        _notificar_matriz_status(os_data, status_anterior, novo_status, current_user.nome_completo)
+        if novo_status != status_anterior and novo_status in STATUS_AVISA_MATRIZ:
+            flash(f'OS atualizada. Matriz avisada por e-mail ({EMAIL_MATRIZ}).', 'success')
+        else:
+            flash('OS atualizada com sucesso!', 'success')
         return redirect(url_for('ver_os', id=id))
     return render_template('editar_os.html', os=os_data, tabela=tabela)
 
@@ -902,6 +934,9 @@ def atualizar_status(id):
                          tipo=tipo,
                          descricao=f'Status alterado: "{status_anterior}" → "{novo_status}"'))
     db.session.commit()
+    _notificar_matriz_status(os_data, status_anterior, novo_status, current_user.nome_completo)
+    if novo_status in STATUS_AVISA_MATRIZ:
+        flash(f'Status atualizado. Matriz avisada por e-mail ({EMAIL_MATRIZ}).', 'success')
     return redirect(url_for('ver_os', id=id))
 
 @app.route('/estoque/add', methods=['POST'])
