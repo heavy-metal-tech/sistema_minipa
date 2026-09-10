@@ -121,6 +121,7 @@ def salvar_foto(foto):
     return result.get('secure_url')
 
 STATUS_AVISA_MATRIZ = ('Aguardando peça', 'Peça enviada')
+LOG_PEDIDO_MINIPA = 'pedido_minipa'   # marca a OS cuja solicitação foi enviada à Minipa
 
 def _notificar_matriz_status(os_data, status_anterior, novo_status, usuario):
     """Avisa a Matriz quando a OS entra num status que depende da Minipa."""
@@ -134,9 +135,18 @@ def _notificar_matriz_status(os_data, status_anterior, novo_status, usuario):
     pecas = [f"  • {p.quantidade}x {p.codigo or 's/ código'} — {p.descricao or 's/ descrição'}"
              for p in os_data.pecas]
     lista_pecas = '\n'.join(pecas) if pecas else '  (nenhuma peça cadastrada na OS)'
+    # Diz se a peça foi pedida à Minipa ou se está sendo resolvida entre as autorizadas
+    pedido = next((l for l in os_data.logs if l.tipo == LOG_PEDIDO_MINIPA), None)
+    if pedido:
+        quando = pedido.data.strftime('%d/%m/%Y às %H:%M') if pedido.data else 'data não registrada'
+        origem = (f"PEDIDO À MINIPA — solicitação enviada em {quando} por {pedido.usuario}.")
+    else:
+        origem = ("SEM PEDIDO À MINIPA — nenhuma solicitação foi enviada pelo sistema. "
+                  "A peça pode estar sendo resolvida entre as autorizadas.")
     assunto = f"OS nº {os_num} — {novo_status} — {autorizada}"
     corpo = (
         f"A Ordem de Serviço nº {os_num} mudou de status.\n\n"
+        f"  {origem}\n\n"
         f"  Status:      {status_anterior or '—'} → {novo_status}\n"
         f"  Autorizada:  {autorizada}\n"
         f"  Equipamento: {os_data.equipamento or '—'} (S/N: {os_data.serie or '—'})\n"
@@ -583,8 +593,8 @@ def enviar_email(id):
              f"Atenciosamente,\n{nome_user}\nMinipa Precision — Assistência Técnica Autorizada")
     # Atualiza status antes de sair da requisição
     os_data.status = 'Enviada para fabricante'
-    db.session.add(LogOS(os_id=os_data.id, usuario=nome_user, tipo='status',
-                         descricao='Status alterado para "Enviada para fabricante" via envio de e-mail'))
+    db.session.add(LogOS(os_id=os_data.id, usuario=nome_user, tipo=LOG_PEDIDO_MINIPA,
+                         descricao=f'Solicitação de peças enviada à Minipa ({destino})'))
     db.session.commit()
     def _enviar_os():
         try:
