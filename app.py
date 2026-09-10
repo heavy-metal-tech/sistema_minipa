@@ -41,8 +41,10 @@ EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
 EMAIL_USER = os.environ.get('EMAIL_USER', '')
 EMAIL_PASS = os.environ.get('EMAIL_PASS', '')
-EMAIL_MINIPA = os.environ.get('EMAIL_MINIPA', 'assistencia@minipa.com.br')
-# Matriz recebe cópia das solicitações de peça, para agilizar o atendimento
+# Destino das solicitações de peça. Se um dia a caixa assistencia@ voltar a ser
+# usada, basta definir EMAIL_MINIPA no Render — sem alterar código.
+EMAIL_MINIPA = os.environ.get('EMAIL_MINIPA', 'wfmalcato@minipa.com.br')
+# Matriz recebe cópia das solicitações e os avisos de status de peça
 EMAIL_MATRIZ = os.environ.get('EMAIL_MATRIZ', 'wfmalcato@minipa.com.br')
 
 def _enviar_email_bg(para, assunto, corpo):
