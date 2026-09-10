@@ -42,6 +42,8 @@ EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
 EMAIL_USER = os.environ.get('EMAIL_USER', '')
 EMAIL_PASS = os.environ.get('EMAIL_PASS', '')
 EMAIL_MINIPA = os.environ.get('EMAIL_MINIPA', 'assistencia@minipa.com.br')
+# Matriz recebe cópia das solicitações de peça, para agilizar o atendimento
+EMAIL_MATRIZ = os.environ.get('EMAIL_MATRIZ', 'wfmalcato@minipa.com.br')
 
 def _enviar_email_bg(para, assunto, corpo):
     """Envia e-mail em background thread para não bloquear a requisição."""
@@ -529,7 +531,11 @@ def enviar_email(id):
     if not _can_access_os(os_data):
         flash('Sem permissão.', 'error')
         return redirect(url_for('dashboard'))
-    destino = (os_data.filial.email if os_data.filial and os_data.filial.email else None) or EMAIL_MINIPA
+    # A solicitação vai PARA a Minipa; a autorizada e a Matriz ficam em cópia.
+    destino = EMAIL_MINIPA
+    email_autorizada = os_data.filial.email if os_data.filial and os_data.filial.email else None
+    nome_autorizada = os_data.filial.nome if os_data.filial else 'Autorizada não informada'
+    copias = [e for e in (EMAIL_MATRIZ, email_autorizada) if e and e != destino]
     try:
         pdf_bytes = draw_pdf_os(os_data).read()
     except Exception:
@@ -540,10 +546,12 @@ def enviar_email(id):
     equip = os_data.equipamento
     serie = os_data.serie
     nome_user = current_user.nome_completo
-    assunto = f"Solicitação de peças – OS nº {os_num}"
+    assunto = f"Solicitação de peças – OS nº {os_num} – {nome_autorizada}"
     corpo = (f"Prezados,\n\nInformamos a abertura da Ordem de Serviço nº {os_num} "
              f"referente ao equipamento modelo {equip} (S/N: {serie}).\n"
              f"Segue em anexo relatório contendo defeito apresentado e peças solicitadas.\n\n"
+             f"Autorizada solicitante: {nome_autorizada}\n"
+             f"Solicitado por: {nome_user}\n\n"
              f"Atenciosamente,\n{nome_user}\nMinipa Precision — Assistência Técnica Autorizada")
     # Atualiza status antes de sair da requisição
     os_data.status = 'Enviada para fabricante'
@@ -555,6 +563,8 @@ def enviar_email(id):
             msg = MIMEMultipart()
             msg['From'] = EMAIL_USER
             msg['To'] = destino
+            if copias:
+                msg['Cc'] = ', '.join(copias)
             msg['Subject'] = assunto
             msg.attach(MIMEText(corpo, 'plain'))
             att = MIMEApplication(pdf_bytes, _subtype='pdf')
@@ -563,11 +573,12 @@ def enviar_email(id):
             with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
                 server.starttls()
                 server.login(EMAIL_USER, EMAIL_PASS)
-                server.send_message(msg)
+                server.send_message(msg, to_addrs=[destino] + copias)
         except Exception:
             app.logger.exception('Erro ao enviar e-mail OS %s', os_num)
     threading.Thread(target=_enviar_os, daemon=True).start()
-    flash('E-mail sendo enviado para a Minipa!', 'success')
+    cc_txt = f' Cópia para {", ".join(copias)}.' if copias else ''
+    flash(f'Solicitação de peças sendo enviada para {destino}.{cc_txt}', 'success')
     return redirect(url_for('ver_os', id=id))
 
 # ── API ─────────────────────────────────────────────────────────────────────────────────────
