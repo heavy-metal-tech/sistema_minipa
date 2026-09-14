@@ -14,6 +14,12 @@ from reportlab.lib import colors
 from datetime import datetime
 from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial, supervisor_autorizadas, LogOS, brt_now
 
+try:
+    import magic  # python-magic: lê o MIME real a partir do conteúdo do arquivo
+except Exception:  # libmagic ausente no sistema operacional
+    magic = None
+    print('WARNING: python-magic indisponível. Uploads serão recusados até instalar a lib.')
+
 app = Flask(__name__)
 _secret = os.environ.get('SECRET_KEY')
 if not _secret:
@@ -74,6 +80,54 @@ def rate_limit_exceeded(e):
     return render_template('login.html'), 429
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+# Extensão declarada -> MIME real aceito para ela (pega arquivo renomeado)
+MIMES_POR_EXTENSAO = {
+    '.pdf': {'application/pdf'},
+    '.png': {'image/png'},
+    '.jpg': {'image/jpeg'},
+    '.jpeg': {'image/jpeg'},
+    '.webp': {'image/webp'},
+}
+
+TIPOS_ACEITOS_TXT = 'PDF ou imagem (PNG, JPG, JPEG ou WEBP)'
+
+
+class ArquivoInvalido(Exception):
+    """Arquivo reprovado na validação de tipo. Vira HTTP 400 na rota."""
+
+
+def validar_arquivo(foto):
+    """Valida extensão e MIME real do arquivo. Levanta ArquivoInvalido se reprovar.
+
+    Não consome o arquivo: o ponteiro do stream volta para a posição original,
+    então o upload para o Cloudinary segue funcionando normalmente.
+    """
+    nome = foto.filename or ''
+    ext = os.path.splitext(nome)[1].lower()
+    if ext not in MIMES_POR_EXTENSAO:
+        raise ArquivoInvalido(
+            'O arquivo "%s" não é permitido. Envie apenas %s.' % (nome, TIPOS_ACEITOS_TXT)
+        )
+
+    if magic is None:
+        raise ArquivoInvalido(
+            'Não foi possível verificar o tipo real do arquivo "%s": a biblioteca '
+            'de validação está indisponível no servidor. Avise o suporte técnico.' % nome
+        )
+
+    inicio = foto.stream.tell()
+    cabecalho = foto.stream.read(4096)
+    foto.stream.seek(inicio)  # devolve o ponteiro para o upload ler o arquivo inteiro
+
+    mime = magic.from_buffer(cabecalho, mime=True)
+    if mime not in MIMES_POR_EXTENSAO[ext]:
+        raise ArquivoInvalido(
+            'O conteúdo do arquivo "%s" não confere com a extensão (declarado "%s", '
+            'detectado "%s"). Envie apenas %s, sem renomear o arquivo.'
+            % (nome, ext, mime, TIPOS_ACEITOS_TXT)
+        )
+
 
 def salvar_foto(foto):
     """Upload photo to Cloudinary if credentials are set, otherwise skip."""
@@ -738,6 +792,14 @@ def editar_os(id):
         return redirect(url_for('dashboard'))
     tabela = TabelaPreco.query.all()
     if request.method == 'POST':
+        # Valida os anexos antes de alterar qualquer campo da OS
+        try:
+            for foto in request.files.getlist('fotos_defeito[]'):
+                if foto and foto.filename:
+                    validar_arquivo(foto)
+        except ArquivoInvalido as erro:
+            flash(str(erro), 'error')
+            return render_template('editar_os.html', os=os_data, tabela=tabela), 400
         status_anterior = os_data.status
         novo_status = request.form.get('status', os_data.status)
         os_data.status = novo_status
