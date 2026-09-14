@@ -1,4 +1,6 @@
 import os, io, smtplib, json, secrets
+import cloudinary
+import cloudinary.uploader
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
