@@ -1435,6 +1435,157 @@ def _init_db():
             if attempt < 4:
                 time.sleep(3)
 
+# ── Correção de OS órfãs (filial_id nulo) ────────────────────────────────────
+# Rota administrativa isolada e aditiva: não altera nenhuma rota, função ou
+# template existente. O HTML é inline (render_template_string, com auto-escape
+# do Jinja ligado). Atribui a autorizada de UMA OS por vez, nunca em massa.
+
+_HTML_OS_ORFAS = """
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corrigir OS órfãs</title>
+  <style>
+    body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f3f5f9;
+         color:#1f2937;margin:0;padding:24px;}
+    .wrap{max-width:1100px;margin:0 auto;}
+    h1{font-size:20px;margin:0 0 4px;color:#0b4a7a;}
+    .sub{font-size:13px;color:#6b7280;margin-bottom:20px;}
+    .card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px;
+          box-shadow:0 1px 3px rgba(0,0,0,.05);}
+    table{width:100%;border-collapse:collapse;font-size:13px;}
+    th{text-align:left;padding:8px 10px;background:#f8fafc;border-bottom:2px solid #e2e8f0;
+       color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:.4px;}
+    td{padding:10px;border-bottom:1px solid #eef2f7;vertical-align:middle;}
+    tr:last-child td{border-bottom:none;}
+    select{padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;
+           max-width:260px;background:#fff;}
+    button{padding:6px 14px;border:none;border-radius:6px;background:#0077c8;color:#fff;
+           font-size:13px;font-weight:600;cursor:pointer;}
+    button:hover{background:#005fa0;}
+    .id{font-weight:700;color:#0b4a7a;}
+    .vazio{padding:28px;text-align:center;color:#6b7280;font-size:14px;}
+    .msg{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px;}
+    .msg.success{background:#dcfce7;border:1px solid #86efac;color:#166534;}
+    .msg.error{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;}
+    .voltar{display:inline-block;margin-bottom:16px;color:#0077c8;text-decoration:none;
+            font-size:13px;font-weight:600;}
+    .aviso{margin-top:16px;font-size:12px;color:#6b7280;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="voltar" href="{{ url_for('dashboard') }}">&larr; Voltar ao painel</a>
+    <h1>Corrigir OS órfãs</h1>
+    <div class="sub">Ordens de serviço sem autorizada vinculada (<code>filial_id</code> nulo).</div>
+
+    {% with mensagens = get_flashed_messages(with_categories=true) %}
+      {% for categoria, texto in mensagens %}
+        <div class="msg {{ 'success' if categoria == 'success' else 'error' }}">{{ texto }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <div class="card">
+      {% if orfas %}
+      <table>
+        <thead>
+          <tr>
+            <th>OS</th><th>Cliente</th><th>Equipamento</th><th>Técnico</th>
+            <th>Abertura</th><th>Autorizada</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for os_item in orfas %}
+          <tr>
+            <form method="post" action="{{ url_for('corrigir_os_orfas') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="os_id" value="{{ os_item.id }}">
+              <td class="id">#{{ os_item.id }}</td>
+              <td>{{ os_item.cliente or '—' }}</td>
+              <td>{{ os_item.equipamento or '—' }}</td>
+              <td>{{ os_item.tecnico or '—' }}</td>
+              <td>{{ os_item.data_abertura.strftime('%d/%m/%Y %H:%M') if os_item.data_abertura else '—' }}</td>
+              <td>
+                <select name="filial_id" required>
+                  <option value="">— selecione —</option>
+                  {% for f in filiais %}
+                  <option value="{{ f.id }}">{{ f.nome }}{% if f.cidade or f.estado %} ({{ f.cidade or '' }}{% if f.cidade and f.estado %}/{% endif %}{{ f.estado or '' }}){% endif %}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td><button type="submit">Atribuir</button></td>
+            </form>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <div class="aviso">
+        {{ orfas|length }} OS órfã(s). Cada botão atribui somente a OS daquela linha.
+      </div>
+      {% else %}
+      <div class="vazio">Nenhuma OS órfã encontrada. Todas as ordens têm autorizada vinculada.</div>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+
+@app.route('/admin/corrigir_os_orfas', methods=['GET', 'POST'])
+@login_required
+def corrigir_os_orfas():
+    from flask import render_template_string
+    if not current_user.is_admin:
+        flash('Sem permissão.', 'error')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        try:
+            os_id_txt = (request.form.get('os_id') or '').strip()
+            filial_id_txt = (request.form.get('filial_id') or '').strip()
+            if not os_id_txt.isdigit() or not filial_id_txt.isdigit():
+                flash('Selecione uma autorizada para a OS.', 'error')
+                return redirect(url_for('corrigir_os_orfas'))
+
+            os_data = OrdemServico.query.get(int(os_id_txt))
+            if not os_data:
+                flash('OS não encontrada.', 'error')
+                return redirect(url_for('corrigir_os_orfas'))
+
+            # Só mexe em OS realmente órfã: evita sobrescrever vínculo já feito
+            # por outro admin ou por duplo envio do formulário.
+            if os_data.filial_id is not None:
+                flash(f'OS #{os_data.id} já possui autorizada vinculada. Nada foi alterado.', 'error')
+                return redirect(url_for('corrigir_os_orfas'))
+
+            filial = Filial.query.filter_by(id=int(filial_id_txt), ativa=True).first()
+            if not filial:
+                flash('Autorizada inválida ou inativa.', 'error')
+                return redirect(url_for('corrigir_os_orfas'))
+
+            os_data.filial_id = filial.id
+            db.session.add(LogOS(os_id=os_data.id, usuario=current_user.nome_completo,
+                                 tipo='edicao',
+                                 descricao=f'Autorizada vinculada a OS órfã: "{filial.nome}" (correção administrativa)'))
+            db.session.commit()
+            flash(f'OS #{os_data.id} vinculada a "{filial.nome}".', 'success')
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('Erro ao corrigir OS orfa')
+            flash('Erro ao vincular a autorizada. Nenhuma alteração foi salva.', 'error')
+        return redirect(url_for('corrigir_os_orfas'))
+
+    orfas = (OrdemServico.query
+             .filter(OrdemServico.filial_id.is_(None))
+             .order_by(OrdemServico.data_abertura.desc())
+             .all())
+    filiais = Filial.query.filter_by(ativa=True).order_by(Filial.nome).all()
+    return render_template_string(_HTML_OS_ORFAS, orfas=orfas, filiais=filiais)
+
+
 with app.app_context():
     _init_db()
 
