@@ -26,6 +26,11 @@ _db_url = os.environ.get('DATABASE_URL', 'sqlite:///instance/minipa_v3.db')
 # Render provides postgres:// but SQLAlchemy requires postgresql://
 if _db_url.startswith('postgres://'):
     _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+# Driver explícito: a partir do SQLAlchemy 2.1 o padrão de postgresql:// passou a
+# ser psycopg (v3), e o driver instalado aqui é o psycopg2-binary. Sem isso o app
+# não sobe. Uma URL que já traga +driver é respeitada como está.
+if _db_url.startswith('postgresql://'):
+    _db_url = _db_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 if _db_url.startswith('postgresql'):
