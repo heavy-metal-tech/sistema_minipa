@@ -46,6 +46,8 @@ EMAIL_PASS = os.environ.get('EMAIL_PASS', '')
 EMAIL_MINIPA = os.environ.get('EMAIL_MINIPA', 'wfmalcato@minipa.com.br')
 # Matriz recebe cópia das solicitações e os avisos de status de peça
 EMAIL_MATRIZ = os.environ.get('EMAIL_MATRIZ', 'wfmalcato@minipa.com.br')
+# Destinatários fixos da Minipa para OS que vão ao fabricante
+EMAIL_FABRICANTE = ('wfmalcato@minipa.com.br', 'metrologia@minipa.com.br')
 
 def _enviar_email_bg(para, assunto, corpo):
     """Envia e-mail em background thread para não bloquear a requisição."""
@@ -159,6 +161,77 @@ def _notificar_matriz_status(os_data, status_anterior, novo_status, usuario):
         f"Minipa Precision — Sistema de Ordens de Serviço"
     )
     _enviar_email_bg(EMAIL_MATRIZ, assunto, corpo)
+
+STATUS_FABRICANTE = 'Enviada para fabricante'
+LOG_ENVIO_FABRICANTE = 'envio_fabricante'
+
+def _enviar_os_fabricante(os_id, usuario):
+    """Envia o PDF da OS à Minipa quando ela vai para o fabricante.
+
+    O SMTP roda em background para não segurar a requisição (limite de 30s do
+    Render), então a thread abre o próprio contexto e a própria sessão — a
+    sessão da requisição não é tocada. O resultado, sucesso ou falha, é
+    registrado no histórico da OS. Nunca levanta exceção para quem chamou:
+    a mudança de status já está salva e não pode ser desfeita por causa de e-mail.
+    """
+    def _enviar():
+        with app.app_context():
+            ok, detalhe = False, ''
+            try:
+                os_data = db.session.get(OrdemServico, os_id)
+                if os_data is None:
+                    return
+                destinatarios = [e for e in EMAIL_FABRICANTE if e]
+                if not destinatarios:
+                    detalhe = 'nenhum destinatário configurado'
+                    raise ValueError(detalhe)
+                os_num = f"{os_id:05d}"
+                autorizada = os_data.filial.nome if os_data.filial else 'não informada'
+                pdf_bytes = draw_pdf_os(os_data).read()
+                corpo = (
+                    f"Prezados,\n\n"
+                    f"A Ordem de Serviço nº {os_num} foi enviada para o fabricante.\n\n"
+                    f"  Autorizada:   {autorizada}\n"
+                    f"  Equipamento:  {os_data.equipamento or '—'} (S/N: {os_data.serie or '—'})\n"
+                    f"  Cliente:      {os_data.cliente or '—'}\n"
+                    f"  Alterado por: {usuario}\n\n"
+                    f"Segue em anexo o relatório completo da OS.\n\n"
+                    f"Acompanhe em: https://sistema-minipa.onrender.com/os/{os_id}\n\n"
+                    f"E-mail enviado automaticamente pelo sistema.\n"
+                    f"Minipa Precision — Sistema de Ordens de Serviço"
+                )
+                msg = MIMEMultipart()
+                msg['From'] = EMAIL_USER
+                msg['To'] = ', '.join(destinatarios)
+                msg['Subject'] = f"OS nº {os_num} enviada para fabricante – {autorizada}"
+                msg.attach(MIMEText(corpo, 'plain'))
+                att = MIMEApplication(pdf_bytes, _subtype='pdf')
+                att.add_header('Content-Disposition', 'attachment', filename=f"OS_{os_num}.pdf")
+                msg.attach(att)
+                with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
+                    server.starttls()
+                    server.login(EMAIL_USER, EMAIL_PASS)
+                    server.send_message(msg, to_addrs=destinatarios)
+                ok, detalhe = True, ', '.join(destinatarios)
+            except Exception as exc:
+                detalhe = detalhe or f'{type(exc).__name__}: {exc}'
+                app.logger.exception('Erro no envio automático da OS %s ao fabricante', os_id)
+            # Registra o resultado no histórico da OS
+            try:
+                descricao = (f'E-mail automático enviado à Minipa ({detalhe})' if ok
+                             else f'FALHA no e-mail automático à Minipa — {detalhe}')
+                db.session.add(LogOS(os_id=os_id, usuario=usuario,
+                                     tipo=LOG_ENVIO_FABRICANTE, descricao=descricao))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                app.logger.exception('Erro ao registrar no histórico o envio da OS %s', os_id)
+            finally:
+                db.session.remove()
+    try:
+        threading.Thread(target=_enviar, daemon=True).start()
+    except Exception:
+        app.logger.exception('Erro ao iniciar envio automático da OS %s', os_id)
 
 def _can_access_os(os_data):
     """Verifica se o usuário atual tem acesso à OS (por filial)."""
@@ -920,7 +993,15 @@ def editar_os(id):
                                  tipo='edicao', descricao='OS editada'))
         db.session.commit()
         _notificar_matriz_status(os_data, status_anterior, novo_status, current_user.nome_completo)
-        if novo_status != status_anterior and novo_status in STATUS_AVISA_MATRIZ:
+        # Envio automático do PDF à Minipa — falha de e-mail não desfaz a edição
+        if novo_status == STATUS_FABRICANTE and novo_status != status_anterior:
+            try:
+                _enviar_os_fabricante(os_data.id, current_user.nome_completo)
+                flash(f'OS atualizada e enviada à Minipa ({", ".join(EMAIL_FABRICANTE)}).', 'success')
+            except Exception:
+                app.logger.exception('Erro ao disparar envio automático da OS %s', id)
+                flash('OS atualizada com sucesso!', 'success')
+        elif novo_status != status_anterior and novo_status in STATUS_AVISA_MATRIZ:
             flash(f'OS atualizada. Matriz avisada por e-mail ({EMAIL_MATRIZ}).', 'success')
         else:
             flash('OS atualizada com sucesso!', 'success')
@@ -957,7 +1038,14 @@ def atualizar_status(id):
                          descricao=f'Status alterado: "{status_anterior}" → "{novo_status}"'))
     db.session.commit()
     _notificar_matriz_status(os_data, status_anterior, novo_status, current_user.nome_completo)
-    if novo_status in STATUS_AVISA_MATRIZ:
+    # Envio automático do PDF à Minipa — falha de e-mail não desfaz a mudança de status
+    if novo_status == STATUS_FABRICANTE and novo_status != status_anterior:
+        try:
+            _enviar_os_fabricante(os_data.id, current_user.nome_completo)
+            flash(f'Status atualizado. OS enviada à Minipa ({", ".join(EMAIL_FABRICANTE)}).', 'success')
+        except Exception:
+            app.logger.exception('Erro ao disparar envio automático da OS %s', id)
+    elif novo_status in STATUS_AVISA_MATRIZ:
         flash(f'Status atualizado. Matriz avisada por e-mail ({EMAIL_MATRIZ}).', 'success')
     return redirect(url_for('ver_os', id=id))
 
