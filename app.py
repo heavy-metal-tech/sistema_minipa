@@ -111,11 +111,15 @@ def rate_limit_exceeded(e):
 
 # ── Helpers ──────────────────────────────────────────────────────
 
-IMAGENS_EXT = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp', 'tif', 'tiff'}
-
 def salvar_foto(foto):
-    """Upload para o Cloudinary. PDF vai como 'raw': a entrega de PDF pela rota
-    /image/upload é bloqueada por padrão nas contas Cloudinary."""
+    """Upload para o Cloudinary, preservando o nome e a extensão do arquivo.
+
+    resource_type='auto' deixa o Cloudinary identificar o tipo, PDF incluído.
+    use_filename mantém o nome original (e com ele a extensão) no lugar de um ID
+    aleatório, e unique_filename acrescenta um sufixo curto para que dois arquivos
+    de mesmo nome não se sobrescrevam. Sem a extensão na URL, o Windows não
+    reconhece o anexo baixado e não consegue abri-lo.
+    """
     if not foto or not foto.filename:
         return None
     cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME')
@@ -123,11 +127,20 @@ def salvar_foto(foto):
     api_secret = os.environ.get('CLOUDINARY_API_SECRET')
     if not (cloud_name and api_key and api_secret):
         return None
-    ext = foto.filename.rsplit('.', 1)[-1].lower() if '.' in foto.filename else ''
-    tipo = 'image' if ext in IMAGENS_EXT else 'raw'
     cloudinary.config(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
-    result = cloudinary.uploader.upload(foto, folder='minipa_os', resource_type=tipo)
-    return result.get('secure_url')
+    result = cloudinary.uploader.upload(
+        foto,
+        folder='minipa_os',
+        resource_type='auto',
+        use_filename=True,
+        unique_filename=True,
+    )
+    url = result.get('secure_url')
+    # Se a extensão não vier na URL, registra — é o sintoma que quebra o download.
+    ext = foto.filename.rsplit('.', 1)[-1].lower() if '.' in foto.filename else ''
+    if url and ext and not url.lower().split('?')[0].endswith(f'.{ext}'):
+        app.logger.warning('Upload sem extensão .%s na URL retornada: %s', ext, url)
+    return url
 
 STATUS_AVISA_MATRIZ = ('Aguardando peça', 'Peça enviada')
 LOG_PEDIDO_MINIPA = 'pedido_minipa'   # marca a OS cuja solicitação foi enviada à Minipa
