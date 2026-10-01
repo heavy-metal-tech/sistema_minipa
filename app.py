@@ -52,7 +52,8 @@ EMAIL_MINIPA = os.environ.get('EMAIL_MINIPA', 'wfmalcato@minipa.com.br')
 # Matriz recebe cópia das solicitações e os avisos de status de peça
 EMAIL_MATRIZ = os.environ.get('EMAIL_MATRIZ', 'wfmalcato@minipa.com.br')
 # Destinatários fixos da Minipa para OS que vão ao fabricante
-EMAIL_FABRICANTE = ('wfmalcato@minipa.com.br', 'metrologia@minipa.com.br')
+EMAIL_FABRICANTE = ('wfmalcato@minipa.com.br', 'metrologia@minipa.com.br',
+                    'wmatsuro@hotmail.com')
 
 def _enviar_email_bg(para, assunto, corpo):
     """Envia e-mail em background thread para não bloquear a requisição."""
