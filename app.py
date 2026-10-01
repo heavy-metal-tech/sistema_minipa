@@ -55,24 +55,55 @@ EMAIL_MATRIZ = os.environ.get('EMAIL_MATRIZ', 'wfmalcato@minipa.com.br')
 EMAIL_FABRICANTE = ('wfmalcato@minipa.com.br', 'metrologia@minipa.com.br',
                     'wmatsuro@hotmail.com')
 
-class _SMTPIPv4(smtplib.SMTP):
-    """SMTP que resolve o host somente em IPv4.
+# 30s em vez de 90: numa porta bloqueada é melhor falhar rápido e registrar
+# do que deixar a thread presa esperando.
+SMTP_TIMEOUT = 30
+
+def _socket_ipv4(host, port, timeout, source_address=None):
+    """Abre a conexão TCP resolvendo o host apenas em IPv4.
 
     O Render não roteia IPv6. Como o smtp.gmail.com publica registros A e AAAA,
     quando o getaddrinfo devolve o AAAA primeiro a conexão morre com
-    OSError 101 (Network is unreachable) — de forma intermitente. Resolver em
-    AF_INET garante um endereço roteável. Só a conexão muda: o nome do host
-    continua sendo o usado na validação do certificado no STARTTLS.
+    OSError 101 (Network is unreachable) — de forma intermitente.
     """
+    ultimo_erro = None
+    for *_, sockaddr in socket.getaddrinfo(host, port, socket.AF_INET,
+                                           socket.SOCK_STREAM):
+        try:
+            return socket.create_connection(sockaddr, timeout, source_address)
+        except OSError as exc:
+            ultimo_erro = exc
+    raise ultimo_erro or OSError(f'nenhum endereço IPv4 para {host}:{port}')
+
+class _SMTPIPv4(smtplib.SMTP):
+    """SMTP em IPv4, para portas que sobem o TLS depois (587)."""
     def _get_socket(self, host, port, timeout):
-        ultimo_erro = None
-        for *_, sockaddr in socket.getaddrinfo(host, port, socket.AF_INET,
-                                               socket.SOCK_STREAM):
-            try:
-                return socket.create_connection(sockaddr, timeout, self.source_address)
-            except OSError as exc:
-                ultimo_erro = exc
-        raise ultimo_erro or OSError(f'nenhum endereço IPv4 para {host}:{port}')
+        return _socket_ipv4(host, port, timeout, self.source_address)
+
+class _SMTPSSLIPv4(smtplib.SMTP_SSL):
+    """SMTP sobre SSL em IPv4, para a porta 465 — cifrado desde o handshake."""
+    def _get_socket(self, host, port, timeout):
+        sock = _socket_ipv4(host, port, timeout, self.source_address)
+        # Mesmo embrulho que o SMTP_SSL faz, mas sobre o socket IPv4.
+        # server_hostname usa o nome, não o IP, para o certificado validar.
+        return self.context.wrap_socket(sock, server_hostname=self._host)
+
+def _conectar_smtp():
+    """Conecta ao SMTP conforme a porta configurada, já com o TLS no ar.
+
+    465 é SSL direto: a sessão nasce cifrada e chamar starttls() nela é erro.
+    587 (e as demais) abrem em texto claro e sobem para TLS com starttls().
+    Quem chama só precisa fazer login e enviar.
+    """
+    if EMAIL_PORT == 465:
+        return _SMTPSSLIPv4(EMAIL_HOST, EMAIL_PORT, timeout=SMTP_TIMEOUT)
+    server = _SMTPIPv4(EMAIL_HOST, EMAIL_PORT, timeout=SMTP_TIMEOUT)
+    try:
+        server.starttls()
+    except Exception:
+        server.close()   # não deixa o socket pendurado se o TLS falhar
+        raise
+    return server
 
 def _enviar_email_bg(para, assunto, corpo):
     """Envia e-mail em background thread para não bloquear a requisição."""
@@ -83,8 +114,7 @@ def _enviar_email_bg(para, assunto, corpo):
             msg['To'] = para
             msg['Subject'] = assunto
             msg.attach(MIMEText(corpo, 'plain'))
-            with _SMTPIPv4(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
-                server.starttls()
+            with _conectar_smtp() as server:
                 server.login(EMAIL_USER, EMAIL_PASS)
                 server.send_message(msg)
         except Exception:
@@ -246,8 +276,7 @@ def _enviar_os_fabricante(os_id, usuario):
                 att = MIMEApplication(pdf_bytes, _subtype='pdf')
                 att.add_header('Content-Disposition', 'attachment', filename=f"OS_{os_num}.pdf")
                 msg.attach(att)
-                with _SMTPIPv4(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
-                    server.starttls()
+                with _conectar_smtp() as server:
                     server.login(EMAIL_USER, EMAIL_PASS)
                     server.send_message(msg, to_addrs=destinatarios)
                 ok, detalhe = True, ', '.join(destinatarios)
@@ -665,8 +694,7 @@ def email_pecas_autorizada():
             att = MIMEApplication(pdf_bytes, _subtype='pdf')
             att.add_header('Content-Disposition', 'attachment', filename=filename_pdf)
             msg.attach(att)
-            with _SMTPIPv4(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
-                server.starttls()
+            with _conectar_smtp() as server:
                 server.login(EMAIL_USER, EMAIL_PASS)
                 server.send_message(msg)
         except Exception:
@@ -731,8 +759,7 @@ def enviar_email(id):
             att = MIMEApplication(pdf_bytes, _subtype='pdf')
             att.add_header('Content-Disposition', 'attachment', filename=f"OS_{os_num}.pdf")
             msg.attach(att)
-            with _SMTPIPv4(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
-                server.starttls()
+            with _conectar_smtp() as server:
                 server.login(EMAIL_USER, EMAIL_PASS)
                 server.send_message(msg, to_addrs=[destino] + copias)
         except Exception:
@@ -1604,8 +1631,7 @@ def enviar_acesso_usuario(id):
                 msg.attach(att)
             except Exception:
                 app.logger.exception('Erro ao gerar manual PDF para credenciais')
-            with _SMTPIPv4(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
-                server.starttls()
+            with _conectar_smtp() as server:
                 server.login(EMAIL_USER, EMAIL_PASS)
                 server.send_message(msg)
         except Exception:
