@@ -1,4 +1,5 @@
-import os, io, smtplib, socket, json, secrets, threading
+import os, io, smtplib, socket, json, secrets, threading, base64
+import urllib.request, urllib.error
 import cloudinary, cloudinary.uploader
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -46,6 +47,12 @@ EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
 EMAIL_USER = os.environ.get('EMAIL_USER', '')
 EMAIL_PASS = os.environ.get('EMAIL_PASS', '')
+# API HTTP do Brevo (porta 443). O Render gratuito bloqueia a saída SMTP, então
+# com BREVO_API_KEY definida todo e-mail sai por aqui; sem ela, volta ao SMTP.
+BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '')
+BREVO_URL = 'https://api.brevo.com/v3/smtp/email'
+# Remetente verificado no Brevo
+EMAIL_FROM = os.environ.get('EMAIL_FROM', '') or EMAIL_USER
 # Destino das solicitações de peça. Se um dia a caixa assistencia@ voltar a ser
 # usada, basta definir EMAIL_MINIPA no Render — sem alterar código.
 EMAIL_MINIPA = os.environ.get('EMAIL_MINIPA', 'wfmalcato@minipa.com.br')
@@ -105,18 +112,85 @@ def _conectar_smtp():
         raise
     return server
 
+def _lista_emails(enderecos):
+    """Aceita um endereço ou uma lista e devolve lista sem vazios."""
+    if not enderecos:
+        return []
+    if isinstance(enderecos, str):
+        enderecos = [enderecos]
+    return [e for e in enderecos if e]
+
+def _enviar_via_brevo(para, assunto, corpo, cc=None, anexo=None):
+    """Envia pela API HTTP do Brevo. Levanta exceção em qualquer falha.
+
+    anexo: tupla (nome_arquivo, bytes) — vai em base64, que é como o Brevo recebe.
+    201 e 202 são sucesso; qualquer outro status tem o corpo da resposta
+    registrado no log e vira exceção, para o chamador tratar como antes.
+    """
+    payload = {
+        'sender': {'email': EMAIL_FROM},
+        'to': [{'email': e} for e in _lista_emails(para)],
+        'subject': assunto,
+        'textContent': corpo,
+    }
+    copias = _lista_emails(cc)
+    if copias:
+        payload['cc'] = [{'email': e} for e in copias]
+    if anexo:
+        nome, conteudo = anexo
+        payload['attachment'] = [{'name': nome,
+                                  'content': base64.b64encode(conteudo).decode('ascii')}]
+    req = urllib.request.Request(
+        BREVO_URL,
+        data=json.dumps(payload).encode('utf-8'),
+        headers={'api-key': BREVO_API_KEY,
+                 'Content-Type': 'application/json',
+                 'Accept': 'application/json'},
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=SMTP_TIMEOUT) as resp:
+            status, resposta = resp.status, resp.read().decode('utf-8', 'replace')
+    except urllib.error.HTTPError as exc:
+        status, resposta = exc.code, exc.read().decode('utf-8', 'replace')
+    if status in (201, 202):
+        return
+    app.logger.error('Brevo recusou o envio para %s (HTTP %s): %s',
+                     ', '.join(_lista_emails(para)), status, resposta)
+    raise RuntimeError(f'Brevo HTTP {status}: {resposta[:300]}')
+
+def _enviar_via_smtp(para, assunto, corpo, cc=None, anexo=None):
+    """Envio SMTP de antes — fallback quando BREVO_API_KEY não está definida."""
+    destinatarios = _lista_emails(para)
+    copias = _lista_emails(cc)
+    msg = MIMEMultipart()
+    msg['From'] = EMAIL_USER
+    msg['To'] = ', '.join(destinatarios)
+    if copias:
+        msg['Cc'] = ', '.join(copias)
+    msg['Subject'] = assunto
+    msg.attach(MIMEText(corpo, 'plain'))
+    if anexo:
+        nome, conteudo = anexo
+        att = MIMEApplication(conteudo, _subtype='pdf')
+        att.add_header('Content-Disposition', 'attachment', filename=nome)
+        msg.attach(att)
+    with _conectar_smtp() as server:
+        server.login(EMAIL_USER, EMAIL_PASS)
+        server.send_message(msg, to_addrs=destinatarios + copias)
+
+def _enviar_email(para, assunto, corpo, cc=None, anexo=None):
+    """Envia pelo Brevo se BREVO_API_KEY existir; senão, pelo SMTP antigo."""
+    if BREVO_API_KEY:
+        _enviar_via_brevo(para, assunto, corpo, cc=cc, anexo=anexo)
+    else:
+        _enviar_via_smtp(para, assunto, corpo, cc=cc, anexo=anexo)
+
 def _enviar_email_bg(para, assunto, corpo):
     """Envia e-mail em background thread para não bloquear a requisição."""
     def _send():
         try:
-            msg = MIMEMultipart()
-            msg['From'] = EMAIL_USER
-            msg['To'] = para
-            msg['Subject'] = assunto
-            msg.attach(MIMEText(corpo, 'plain'))
-            with _conectar_smtp() as server:
-                server.login(EMAIL_USER, EMAIL_PASS)
-                server.send_message(msg)
+            _enviar_email(para, assunto, corpo)
         except Exception:
             import logging
             logging.getLogger(__name__).exception('Erro ao enviar e-mail para %s', para)
@@ -268,17 +342,9 @@ def _enviar_os_fabricante(os_id, usuario):
                     f"E-mail enviado automaticamente pelo sistema.\n"
                     f"Minipa Precision — Sistema de Ordens de Serviço"
                 )
-                msg = MIMEMultipart()
-                msg['From'] = EMAIL_USER
-                msg['To'] = ', '.join(destinatarios)
-                msg['Subject'] = f"OS nº {os_num} enviada para fabricante – {autorizada}"
-                msg.attach(MIMEText(corpo, 'plain'))
-                att = MIMEApplication(pdf_bytes, _subtype='pdf')
-                att.add_header('Content-Disposition', 'attachment', filename=f"OS_{os_num}.pdf")
-                msg.attach(att)
-                with _conectar_smtp() as server:
-                    server.login(EMAIL_USER, EMAIL_PASS)
-                    server.send_message(msg, to_addrs=destinatarios)
+                _enviar_email(destinatarios,
+                              f"OS nº {os_num} enviada para fabricante – {autorizada}",
+                              corpo, anexo=(f"OS_{os_num}.pdf", pdf_bytes))
                 ok, detalhe = True, ', '.join(destinatarios)
             except Exception as exc:
                 detalhe = detalhe or f'{type(exc).__name__}: {exc}'
@@ -686,17 +752,7 @@ def email_pecas_autorizada():
     filename_pdf = f"pecas_por_autorizada_{_date_file}.pdf"
     def _enviar_relatorio():
         try:
-            msg = MIMEMultipart()
-            msg['From'] = EMAIL_USER
-            msg['To'] = DESTINO
-            msg['Subject'] = assunto
-            msg.attach(MIMEText(corpo, 'plain'))
-            att = MIMEApplication(pdf_bytes, _subtype='pdf')
-            att.add_header('Content-Disposition', 'attachment', filename=filename_pdf)
-            msg.attach(att)
-            with _conectar_smtp() as server:
-                server.login(EMAIL_USER, EMAIL_PASS)
-                server.send_message(msg)
+            _enviar_email(DESTINO, assunto, corpo, anexo=(filename_pdf, pdf_bytes))
         except Exception:
             app.logger.exception('Erro ao enviar relatório de peças para %s', DESTINO)
     threading.Thread(target=_enviar_relatorio, daemon=True).start()
@@ -749,19 +805,8 @@ def enviar_email(id):
     db.session.commit()
     def _enviar_os():
         try:
-            msg = MIMEMultipart()
-            msg['From'] = EMAIL_USER
-            msg['To'] = destino
-            if copias:
-                msg['Cc'] = ', '.join(copias)
-            msg['Subject'] = assunto
-            msg.attach(MIMEText(corpo, 'plain'))
-            att = MIMEApplication(pdf_bytes, _subtype='pdf')
-            att.add_header('Content-Disposition', 'attachment', filename=f"OS_{os_num}.pdf")
-            msg.attach(att)
-            with _conectar_smtp() as server:
-                server.login(EMAIL_USER, EMAIL_PASS)
-                server.send_message(msg, to_addrs=[destino] + copias)
+            _enviar_email(destino, assunto, corpo, cc=copias,
+                          anexo=(f"OS_{os_num}.pdf", pdf_bytes))
         except Exception:
             app.logger.exception('Erro ao enviar e-mail OS %s', os_num)
     threading.Thread(target=_enviar_os, daemon=True).start()
@@ -1619,21 +1664,14 @@ def enviar_acesso_usuario(id):
     )
     def _enviar_credenciais():
         try:
-            msg = MIMEMultipart()
-            msg['From'] = EMAIL_USER
-            msg['To'] = destino
-            msg['Subject'] = 'Acesso ao Sistema Minipa OS — Credenciais de Acesso'
-            msg.attach(MIMEText(corpo, 'plain'))
+            anexo = None
             try:
                 pdf_buf = _gerar_manual_pdf()
-                att = MIMEApplication(pdf_buf.read(), _subtype='pdf')
-                att.add_header('Content-Disposition', 'attachment', filename='manual_sistema_minipa.pdf')
-                msg.attach(att)
+                anexo = ('manual_sistema_minipa.pdf', pdf_buf.read())
             except Exception:
                 app.logger.exception('Erro ao gerar manual PDF para credenciais')
-            with _conectar_smtp() as server:
-                server.login(EMAIL_USER, EMAIL_PASS)
-                server.send_message(msg)
+            _enviar_email(destino, 'Acesso ao Sistema Minipa OS — Credenciais de Acesso',
+                          corpo, anexo=anexo)
         except Exception:
             app.logger.exception('Erro ao enviar credenciais para %s', destino)
     threading.Thread(target=_enviar_credenciais, daemon=True).start()
