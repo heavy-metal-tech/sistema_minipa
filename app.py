@@ -1,4 +1,4 @@
-import os, io, smtplib, json, secrets, threading
+import os, io, smtplib, socket, json, secrets, threading
 import cloudinary, cloudinary.uploader
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -184,6 +184,25 @@ def _notificar_matriz_status(os_data, status_anterior, novo_status, usuario):
 STATUS_FABRICANTE = 'Enviada para fabricante'
 LOG_ENVIO_FABRICANTE = 'envio_fabricante'
 
+class _SMTPIPv4(smtplib.SMTP):
+    """SMTP que resolve o host somente em IPv4.
+
+    O Render não roteia IPv6. Como o smtp.gmail.com publica registros A e AAAA,
+    quando o getaddrinfo devolve o AAAA primeiro a conexão morre com
+    OSError 101 (Network is unreachable) — de forma intermitente. Resolver em
+    AF_INET garante um endereço roteável. Só a conexão muda: o nome do host
+    continua sendo o usado na validação do certificado no STARTTLS.
+    """
+    def _get_socket(self, host, port, timeout):
+        ultimo_erro = None
+        for *_, sockaddr in socket.getaddrinfo(host, port, socket.AF_INET,
+                                               socket.SOCK_STREAM):
+            try:
+                return socket.create_connection(sockaddr, timeout, self.source_address)
+            except OSError as exc:
+                ultimo_erro = exc
+        raise ultimo_erro or OSError(f'nenhum endereço IPv4 para {host}:{port}')
+
 def _enviar_os_fabricante(os_id, usuario):
     """Envia o PDF da OS à Minipa quando ela vai para o fabricante.
 
@@ -227,7 +246,7 @@ def _enviar_os_fabricante(os_id, usuario):
                 att = MIMEApplication(pdf_bytes, _subtype='pdf')
                 att.add_header('Content-Disposition', 'attachment', filename=f"OS_{os_num}.pdf")
                 msg.attach(att)
-                with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
+                with _SMTPIPv4(EMAIL_HOST, EMAIL_PORT, timeout=90) as server:
                     server.starttls()
                     server.login(EMAIL_USER, EMAIL_PASS)
                     server.send_message(msg, to_addrs=destinatarios)
