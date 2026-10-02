@@ -61,6 +61,8 @@ EMAIL_MATRIZ = os.environ.get('EMAIL_MATRIZ', 'wfmalcato@minipa.com.br')
 # Destinatários fixos da Minipa para OS que vão ao fabricante
 EMAIL_FABRICANTE = ('wfmalcato@minipa.com.br', 'metrologia@minipa.com.br',
                     'wmatsuro@hotmail.com')
+# Cópia nos envios de credenciais, para acompanhar quem recebeu acesso
+EMAIL_COPIA_CREDENCIAIS = ('wfmalcato@minipa.com.br', 'wmatsuro@hotmail.com')
 
 # 30s em vez de 90: numa porta bloqueada é melhor falhar rápido e registrar
 # do que deixar a thread presa esperando.
@@ -1647,6 +1649,8 @@ def enviar_acesso_usuario(id):
     else:
         flash(f'{user.nome_completo}: nenhuma autorizada com esse nome tem e-mail cadastrado.', 'error')
         return redirect(url_for('dashboard'))
+    # Cópias de acompanhamento, sem repetir o destinatário principal
+    copias = [e for e in EMAIL_COPIA_CREDENCIAIS if e and e != destino]
     # Senha fixa: o usuário é obrigado a trocá-la no primeiro acesso
     NOVA_SENHA = '123456'
     user.password = generate_password_hash(NOVA_SENHA, method='pbkdf2:sha256')
@@ -1671,11 +1675,13 @@ def enviar_acesso_usuario(id):
             except Exception:
                 app.logger.exception('Erro ao gerar manual PDF para credenciais')
             _enviar_email(destino, 'Acesso ao Sistema Minipa OS — Credenciais de Acesso',
-                          corpo, anexo=anexo)
+                          corpo, cc=copias, anexo=anexo)
         except Exception:
             app.logger.exception('Erro ao enviar credenciais para %s', destino)
     threading.Thread(target=_enviar_credenciais, daemon=True).start()
-    flash(f'Senha de {user.nome_completo} redefinida. Enviando para {destino} — {origem}.', 'success')
+    cc_txt = f' Cópia para {", ".join(copias)}.' if copias else ''
+    flash(f'Senha de {user.nome_completo} redefinida. Enviando para {destino} — {origem}.{cc_txt}',
+          'success')
     return redirect(url_for('dashboard'))
 
 @app.route('/admin/cadastrar_autorizadas_faltantes')
