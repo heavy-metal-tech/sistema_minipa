@@ -1124,11 +1124,15 @@ def nova_os():
         descricoes = request.form.getlist('peca_descricao[]')
         quantidades = request.form.getlist('peca_quantidade[]')
         obs_list = request.form.getlist('peca_obs[]')
+        fotos_peca = request.files.getlist('peca_foto[]')
         for i in range(len(codigos)):
             if descricoes[i].strip():
+                # A foto da peça é opcional e vem na mesma ordem dos demais campos
+                foto_peca = fotos_peca[i] if i < len(fotos_peca) else None
+                caminho_peca = salvar_foto(foto_peca) if foto_peca and foto_peca.filename else None
                 peca = PecaOS(os_id=nova.id, codigo=codigos[i],
                               descricao=descricoes[i], quantidade=int(quantidades[i] or 1),
-                              observacoes=obs_list[i])
+                              observacoes=obs_list[i], foto=caminho_peca)
                 db.session.add(peca)
         db.session.add(LogOS(os_id=nova.id, usuario=current_user.nome_completo,
                               tipo='criacao', descricao=f'OS criada com status "{nova.status}"'))
