@@ -368,6 +368,80 @@ def _enviar_os_fabricante(os_id, usuario):
     except Exception:
         app.logger.exception('Erro ao iniciar envio automático da OS %s', os_id)
 
+MSG_SEM_AUTORIZADA = ('Sua autorizada ainda não está vinculada. '
+                      'Fale com o administrador do Minipa OS.')
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024          # 10 MB por arquivo
+TIPOS_IMAGEM = ('jpg', 'png', 'webp')
+
+def _detectar_tipo(stream):
+    """Tipo real do arquivo pelos bytes iniciais. None se não for aceito.
+
+    O accept do formulário e a extensão são dica do navegador, não garantia:
+    um .exe renomeado para .jpg passa pelos dois. Aqui vale a assinatura.
+    """
+    pos = stream.tell()
+    cabecalho = stream.read(16)
+    stream.seek(pos)
+    if cabecalho.startswith(b'\xff\xd8\xff'):
+        return 'jpg'
+    if cabecalho.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png'
+    if cabecalho[:4] == b'RIFF' and cabecalho[8:12] == b'WEBP':
+        return 'webp'
+    if cabecalho.startswith(b'%PDF-'):
+        return 'pdf'
+    return None
+
+def _tamanho_arquivo(arquivo):
+    """Tamanho real em bytes — content_length costuma vir zerado."""
+    pos = arquivo.stream.tell()
+    arquivo.stream.seek(0, io.SEEK_END)
+    tamanho = arquivo.stream.tell()
+    arquivo.stream.seek(pos)
+    return tamanho
+
+def validar_upload(arquivo, permitir_pdf=False):
+    """Valida tamanho e tipo real. Devolve (tipo, erro); erro None se passou.
+
+    Arquivo ausente devolve (None, None): não enviar nada não é erro.
+    """
+    if not arquivo or not arquivo.filename:
+        return None, None
+    nome = arquivo.filename
+    tamanho = _tamanho_arquivo(arquivo)
+    if tamanho > MAX_UPLOAD_BYTES:
+        return None, (f'"{nome}" tem {tamanho / 1048576:.1f} MB e o limite é 10 MB. '
+                      f'Reduza o arquivo e envie de novo.')
+    if tamanho == 0:
+        return None, f'"{nome}" está vazio.'
+    tipo = _detectar_tipo(arquivo.stream)
+    aceitos = TIPOS_IMAGEM + (('pdf',) if permitir_pdf else ())
+    if tipo not in aceitos:
+        permitido = 'JPG, PNG, WEBP ou PDF' if permitir_pdf else 'JPG, PNG ou WEBP'
+        return None, (f'"{nome}" não é um arquivo {permitido}. '
+                      f'Renomear a extensão não muda o conteúdo do arquivo.')
+    return tipo, None
+
+def _validar_uploads_os(permitir_pdf_na_nf=True):
+    """Valida todos os anexos do formulário de OS antes de gravar qualquer coisa.
+
+    Devolve a primeira mensagem de erro, ou None se estiver tudo certo. Rodar
+    isto antes de tocar o banco é o que impede a OS de ser salva pela metade.
+    """
+    _, erro = validar_upload(request.files.get('foto_nf'), permitir_pdf=permitir_pdf_na_nf)
+    if erro:
+        return erro
+    for foto in request.files.getlist('fotos_defeito[]'):
+        _, erro = validar_upload(foto, permitir_pdf=False)
+        if erro:
+            return erro
+    for foto in request.files.getlist('peca_foto[]'):
+        _, erro = validar_upload(foto, permitir_pdf=False)
+        if erro:
+            return erro
+    return None
+
 def _can_access_os(os_data):
     """Verifica se o usuário atual tem acesso à OS (por filial)."""
     if current_user.is_admin or current_user.is_gerente:
@@ -963,19 +1037,33 @@ def nova_os():
     tabela = TabelaPreco.query.all()
     filiais = Filial.query.filter_by(ativa=True).all()
     if request.method == 'POST':
-        # Determine filial_id: admin/gerente/supervisor choose; técnico uses own filial
+        def _recusar(msg):
+            flash(msg, 'error')
+            return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=brt_now())
+        # Anexos validados antes de qualquer gravação, para não salvar OS pela metade
+        erro_anexo = _validar_uploads_os()
+        if erro_anexo:
+            return _recusar(erro_anexo)
+        # admin/gerente escolhem livremente; os demais ficam restritos ao próprio
+        # escopo e não podem criar OS sem autorizada.
         if current_user.is_admin or current_user.is_gerente:
             filial_id = request.form.get('filial_id') or None
             filial_id = int(filial_id) if filial_id else None
-        elif current_user.is_supervisor:
-            filial_id = request.form.get('filial_id') or None
-            filial_id = int(filial_id) if filial_id else None
-            allowed = [f.id for f in current_user.autorizadas_supervisionadas]
-            if filial_id and filial_id not in allowed:
-                flash('Autorizada inválida.', 'error')
-                return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=brt_now())
         else:
-            filial_id = current_user.filial_id
+            if current_user.is_supervisor:
+                permitidas = [f.id for f in current_user.autorizadas_supervisionadas]
+                bruto = request.form.get('filial_id') or None
+                try:
+                    filial_id = int(bruto) if bruto else None
+                except (TypeError, ValueError):
+                    filial_id = None
+            else:
+                permitidas = [current_user.filial_id] if current_user.filial_id else []
+                filial_id = current_user.filial_id
+            if not filial_id:
+                return _recusar(MSG_SEM_AUTORIZADA)
+            if filial_id not in permitidas:
+                return _recusar('Autorizada inválida: você não atende essa autorizada.')
         nova = OrdemServico(
             status=request.form.get('status', 'Aberta'),
             tipo_pessoa=request.form.get('tipo_pessoa', 'PF'),
@@ -1051,6 +1139,11 @@ def editar_os(id):
         return redirect(url_for('dashboard'))
     tabela = TabelaPreco.query.all()
     if request.method == 'POST':
+        # Anexos validados antes de tocar a OS, para não gravar edição pela metade
+        erro_anexo = _validar_uploads_os()
+        if erro_anexo:
+            flash(erro_anexo, 'error')
+            return render_template('editar_os.html', os=os_data, tabela=tabela)
         status_anterior = os_data.status
         novo_status = request.form.get('status', os_data.status)
         os_data.status = novo_status
