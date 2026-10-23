@@ -1024,12 +1024,25 @@ def dashboard():
     ).limit(5).all()
 
     usuarios = User.query.order_by(User.is_admin.desc(), User.nome_completo).all()
+    # Técnicos e supervisores sem autorizada não conseguem abrir OS nem ver as suas.
+    # Admin e gerente têm escopo global, então não entram nesta lista.
+    sem_autorizada = []
+    if current_user.is_admin:
+        for u in usuarios:
+            if u.is_admin or u.is_gerente:
+                continue
+            if u.is_supervisor:
+                if not u.autorizadas_supervisionadas:
+                    sem_autorizada.append(u)
+            elif not u.filial_id:
+                sem_autorizada.append(u)
     filiais = Filial.query.order_by(Filial.nome).all()
     return render_template('dashboard.html', ordens=ordens, estoque=estoque,
                            stats=stats, q=q, status_filter=status_filter,
                            meses=meses, os_por_mes=os_por_mes,
                            status_data=status_data,
-                           top_equip=top_equip, usuarios=usuarios, filiais=filiais)
+                           top_equip=top_equip, usuarios=usuarios, filiais=filiais,
+                           sem_autorizada=sem_autorizada)
 
 @app.route('/nova_os', methods=['GET', 'POST'])
 @login_required

@@ -264,6 +264,40 @@
     <div class="card">
       <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Gerenciamento de Usuários</h2>
 
+      {% if current_user.is_admin %}
+      <!-- Usuários sem autorizada: não conseguem abrir OS nem ver as suas -->
+      <div id="sem-autorizada" style="margin-bottom:16px;padding:12px 14px;border-radius:8px;
+           border:1px solid {{ '#fecaca' if sem_autorizada else '#bbf7d0' }};
+           background:{{ '#fef2f2' if sem_autorizada else '#f0fdf4' }};">
+        {% if sem_autorizada %}
+        <div style="font-size:12.5px;font-weight:700;color:#b91c1c;margin-bottom:8px;">
+          {{ sem_autorizada|length }} usuário(s) sem autorizada vinculada — não conseguem abrir OS
+        </div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;">
+          {% for u in sem_autorizada %}
+          <li style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;">
+            <span>{{ u.nome_completo }}</span>
+            <span style="color:#6b7280;font-family:monospace;font-size:11.5px;">{{ u.username }}</span>
+            <span class="badge" style="background:{{ '#fef9c3' if u.is_supervisor else '#e0f0ff' }};
+                  color:{{ '#854d0e' if u.is_supervisor else '#0077c8' }};">
+              {{ 'Supervisor' if u.is_supervisor else 'Técnico' }}
+            </span>
+            <button onclick="abrirModal({{ u.id }}, '{{ u.nome_completo|e }}', '{{ u.username|e }}', '{{ 'supervisor' if u.is_supervisor else 'tecnico' }}', '{{ u.email|e if u.email else '' }}')"
+              class="btn btn-outline btn-sm" style="margin-left:auto;">Editar cadastro</button>
+          </li>
+          {% endfor %}
+        </ul>
+        <div style="font-size:11.5px;color:#6b7280;margin-top:8px;">
+          Supervisor se vincula em Autorizadas → Supervisores por Região.
+        </div>
+        {% else %}
+        <div style="font-size:12.5px;font-weight:600;color:#15803d;">
+          Todos os usuários estão vinculados
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
       <!-- Modal de edição de usuário -->
       <div id="modal-edit" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:center;justify-content:center;">
         <div style="background:#fff;border-radius:14px;padding:28px 32px;width:380px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.18);">
