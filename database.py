@@ -109,3 +109,29 @@ class Estoque(db.Model):
     componente = db.Column(db.String(100), nullable=False)
     quantidade = db.Column(db.Integer, default=0)
     posicao = db.Column(db.String(50))
+
+class Anexo(db.Model):
+    """Arquivo de uma OS no Cloudinary, servido só pela rota do sistema.
+
+    Guarda o public_id em vez da URL pronta: a URL de entrega é montada na hora,
+    assinada quando o arquivo é 'authenticated'. tipo_entrega distingue o legado
+    ('upload', público) do novo ('authenticated'), e é o que permite migrar aos
+    poucos. nome_original só serve de nome de download, já que o public_id é
+    aleatório e não diz nada sobre o conteúdo.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    os_id = db.Column(db.Integer, db.ForeignKey('ordem_servico.id'), nullable=False, index=True)
+    peca_id = db.Column(db.Integer, db.ForeignKey('peca_os.id'), nullable=True)
+    categoria = db.Column(db.String(20), nullable=False)   # nota_fiscal | defeito | peca
+    public_id = db.Column(db.String(200), nullable=False)
+    resource_type = db.Column(db.String(10), default='image')        # image | raw
+    formato = db.Column(db.String(10))                               # jpg png webp pdf
+    tipo_entrega = db.Column(db.String(20), default='authenticated')  # upload | authenticated
+    nome_original = db.Column(db.String(255))
+    enviado_em = db.Column(db.DateTime, default=brt_now)
+    enviado_por = db.Column(db.String(100))
+
+    ordem = db.relationship('OrdemServico', backref=db.backref(
+        'anexos', lazy=True, cascade='all, delete-orphan', order_by='Anexo.id'))
+    peca = db.relationship('PecaOS', backref=db.backref(
+        'anexos', lazy=True, cascade='all, delete-orphan'))

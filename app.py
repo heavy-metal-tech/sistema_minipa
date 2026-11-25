@@ -1,20 +1,23 @@
 import os, io, smtplib, socket, json, secrets, threading, base64
 import urllib.request, urllib.error
 import cloudinary, cloudinary.uploader
+from cloudinary.utils import cloudinary_url
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
-from flask import Flask, render_template, redirect, url_for, request, flash, send_file, jsonify
+from flask import (Flask, render_template, redirect, url_for, request, flash,
+                   send_file, jsonify, abort, Response)
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from datetime import datetime
-from database import db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial, supervisor_autorizadas, LogOS, brt_now
+from database import (db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial,
+                      supervisor_autorizadas, LogOS, Anexo, brt_now)
 
 app = Flask(__name__)
 _secret = os.environ.get('SECRET_KEY')
@@ -266,6 +269,84 @@ def salvar_foto(foto):
     ext = foto.filename.rsplit('.', 1)[-1].lower() if '.' in foto.filename else ''
     if url and ext and not url.lower().split('?')[0].endswith(f'.{ext}'):
         app.logger.warning('Upload sem extensão .%s na URL retornada: %s', ext, url)
+    return url
+
+# ── Anexos servidos pela rota própria ────────────────────────────────────────
+# Nada abaixo é chamado ainda: o upload e os templates passam a usar isto num
+# commit seguinte, depois que o backfill tiver populado a tabela.
+
+FORMATOS_MIME = {
+    'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+    'png': 'image/png', 'webp': 'image/webp', 'pdf': 'application/pdf',
+}
+
+def _configurar_cloudinary():
+    """Configura o SDK e diz se há credenciais.
+
+    O SDK já lê as variáveis de ambiente sozinho; isto existe pelo retorno:
+    sem credenciais a entrega falha com erro claro, em vez de montar uma URL
+    com cloud_name vazio.
+    """
+    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME')
+    api_key = os.environ.get('CLOUDINARY_API_KEY')
+    api_secret = os.environ.get('CLOUDINARY_API_SECRET')
+    if not (cloud_name and api_key and api_secret):
+        return False
+    cloudinary.config(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
+    return True
+
+def salvar_anexo(arquivo):
+    """Sobe o arquivo como 'authenticated' e devolve os campos do Anexo.
+
+    O public_id é aleatório de propósito: preservar o nome original tornava a URL
+    parcialmente adivinhável — quem soubesse o número da nota fiscal tentava o
+    nome. O nome original fica no banco e só reaparece como nome de download.
+    """
+    if not arquivo or not arquivo.filename:
+        return None
+    if not _configurar_cloudinary():
+        return None
+    ext = arquivo.filename.rsplit('.', 1)[-1].lower() if '.' in arquivo.filename else ''
+    resultado = cloudinary.uploader.upload(
+        arquivo,
+        folder='minipa_os',
+        resource_type='auto',
+        type='authenticated',
+        public_id=secrets.token_urlsafe(18),
+        overwrite=False,
+    )
+    return {
+        'public_id': resultado.get('public_id'),
+        'resource_type': resultado.get('resource_type') or 'image',
+        # O Cloudinary não devolve format para resource_type=raw; cai na extensão,
+        # que já foi conferida por conteúdo em validar_upload.
+        'formato': (resultado.get('format') or ext or '').lower(),
+        'tipo_entrega': resultado.get('type') or 'authenticated',
+        'nome_original': arquivo.filename[:255],
+    }
+
+def _registrar_anexo(arquivo, os_id, categoria, peca_id=None):
+    """Sobe o arquivo e cria a linha em Anexo. Devolve o Anexo, ou None."""
+    dados = salvar_anexo(arquivo)
+    if not dados:
+        return None
+    anexo = Anexo(os_id=os_id, peca_id=peca_id, categoria=categoria,
+                  enviado_por=current_user.nome_completo, **dados)
+    db.session.add(anexo)
+    return anexo
+
+def _url_interna_cloudinary(anexo):
+    """URL para o servidor buscar o arquivo. Nunca chega ao navegador."""
+    if not _configurar_cloudinary():
+        raise RuntimeError('Cloudinary não configurado')
+    url, _ = cloudinary_url(
+        anexo.public_id,
+        resource_type=anexo.resource_type or 'image',
+        type=anexo.tipo_entrega or 'authenticated',
+        format=anexo.formato or None,
+        sign_url=(anexo.tipo_entrega == 'authenticated'),
+        secure=True,
+    )
     return url
 
 STATUS_AVISA_MATRIZ = ('Aguardando peça', 'Peça enviada')
@@ -1230,6 +1311,55 @@ def editar_os(id):
         return redirect(url_for('ver_os', id=id))
     return render_template('editar_os.html', os=os_data, tabela=tabela)
 
+@app.route('/os/<int:os_id>/anexo/<int:anexo_id>')
+@login_required
+def ver_anexo(os_id, anexo_id):
+    """Única porta de entrada para os anexos.
+
+    Dois 404 silenciosos, sem distinguir "não existe" de "não é seu": OS fora do
+    escopo do usuário, e anexo que não pertence à OS da URL — senão quem acessa
+    a OS 10 leria o anexo da OS 99 só trocando o id.
+    """
+    os_data = OrdemServico.query.get_or_404(os_id)
+    if not _can_access_os(os_data):
+        abort(404)
+    anexo = db.session.get(Anexo, anexo_id)
+    if anexo is None or anexo.os_id != os_id:
+        abort(404)
+    # Content-Type sai de lista fixa, nunca do que o Cloudinary responder
+    mime = FORMATOS_MIME.get((anexo.formato or '').lower())
+    if not mime:
+        app.logger.warning('Anexo %s com formato não servível: %r', anexo.id, anexo.formato)
+        abort(404)
+    # A conexão abre aqui, antes de devolver a resposta: assim uma falha do
+    # Cloudinary vira erro tratado, em vez de stream cortado pela metade.
+    try:
+        upstream = urllib.request.urlopen(_url_interna_cloudinary(anexo), timeout=30)
+    except Exception:
+        app.logger.exception('Falha ao buscar anexo %s no Cloudinary', anexo.id)
+        return Response('Não foi possível abrir o anexo agora. Tente novamente em instantes.',
+                        status=502, mimetype='text/plain; charset=utf-8')
+
+    def _blocos():
+        try:
+            while True:
+                bloco = upstream.read(64 * 1024)
+                if not bloco:
+                    break
+                yield bloco
+        finally:
+            upstream.close()
+
+    nome = anexo.nome_original or f'anexo_{anexo.id}.{anexo.formato}'
+    resposta = Response(_blocos(), mimetype=mime)
+    resposta.headers['Content-Disposition'] = f'inline; filename="{nome}"'
+    resposta.headers['X-Content-Type-Options'] = 'nosniff'
+    resposta.headers['Cache-Control'] = 'private, max-age=0, no-store'
+    tamanho = upstream.headers.get('Content-Length')
+    if tamanho:
+        resposta.headers['Content-Length'] = tamanho
+    return resposta
+
 @app.route('/os/<int:id>')
 @login_required
 def ver_os(id):
@@ -1916,6 +2046,24 @@ def _init_db():
         'CREATE INDEX IF NOT EXISTS idx_os_status ON ordem_servico(status)',
         'CREATE INDEX IF NOT EXISTS idx_os_filial ON ordem_servico(filial_id)',
         'CREATE INDEX IF NOT EXISTS idx_log_os_id ON log_os(os_id)',
+        # ── Anexos servidos pela rota própria. As colunas de URL antigas ficam
+        #    como estão: são a fonte do backfill e o caminho de rollback.
+        '''CREATE TABLE IF NOT EXISTS anexo (
+            id SERIAL PRIMARY KEY,
+            os_id INTEGER NOT NULL REFERENCES ordem_servico(id) ON DELETE CASCADE,
+            peca_id INTEGER REFERENCES peca_os(id) ON DELETE CASCADE,
+            categoria VARCHAR(20) NOT NULL,
+            public_id VARCHAR(200) NOT NULL,
+            resource_type VARCHAR(10) DEFAULT 'image',
+            formato VARCHAR(10),
+            tipo_entrega VARCHAR(20) DEFAULT 'authenticated',
+            nome_original VARCHAR(255),
+            enviado_em TIMESTAMP DEFAULT NOW(),
+            enviado_por VARCHAR(100)
+        )''',
+        'CREATE INDEX IF NOT EXISTS idx_anexo_os_id ON anexo(os_id)',
+        # Torna o backfill idempotente: o mesmo arquivo não entra duas vezes na OS
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_anexo_unico ON anexo(os_id, public_id)',
     ]
     for attempt in range(5):
         try:
