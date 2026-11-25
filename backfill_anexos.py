@@ -1,0 +1,126 @@
+"""Backfill: cria uma linha em Anexo para cada anexo das colunas antigas.
+
+Só mexe no banco — não toca no Cloudinary. Os arquivos continuam como estão
+(type='upload'); quem os converte para 'authenticated' é o outro script.
+
+    python3 backfill_anexos.py              # dry-run: só lista o que faria
+    python3 backfill_anexos.py --apply      # grava
+
+Idempotente: o índice único (os_id, public_id) impede duplicata, e o script
+confere antes de inserir. Rodar de novo só pega o que entrou no intervalo.
+"""
+import argparse
+import json
+import re
+import sys
+
+from app import app
+from database import db, OrdemServico, Anexo
+
+# https://res.cloudinary.com/<cloud>/<resource_type>/<type>/v123/<public_id>.<fmt>
+_URL = re.compile(
+    r'^https?://res\.cloudinary\.com/[^/]+/'
+    r'(?P<resource_type>image|raw|video)/'
+    r'(?P<tipo_entrega>upload|authenticated|private)/'
+    r'(?:s--[^/]+--/)?'          # assinatura, quando houver
+    r'(?:v\d+/)?'                # versão, quando houver
+    r'(?P<public_id>.+?)'
+    r'(?:\.(?P<formato>[A-Za-z0-9]{2,5}))?$'
+)
+
+
+def interpretar(url):
+    """Extrai os campos da URL. Devolve dict ou None se não reconhecer."""
+    if not url or not isinstance(url, str):
+        return None
+    m = _URL.match(url.strip())
+    if not m:
+        return None
+    d = m.groupdict()
+    if not d['public_id']:
+        return None
+    return {
+        'public_id': d['public_id'],
+        'resource_type': d['resource_type'],
+        'tipo_entrega': d['tipo_entrega'],
+        'formato': (d['formato'] or '').lower(),
+        # O nome original não existe nas URLs legadas; o trecho final do
+        # public_id é o mais próximo disso, e serve de nome de download.
+        'nome_original': d['public_id'].rsplit('/', 1)[-1] +
+                         (f".{d['formato'].lower()}" if d['formato'] else ''),
+    }
+
+
+def coletar(os_data):
+    """Todos os anexos legados de uma OS: (categoria, url, peca_id)."""
+    itens = []
+    if os_data.foto_nf:
+        itens.append(('nota_fiscal', os_data.foto_nf, None))
+    if os_data.fotos_defeito:
+        try:
+            for url in json.loads(os_data.fotos_defeito) or []:
+                itens.append(('defeito', url, None))
+        except (ValueError, TypeError):
+            itens.append(('defeito', os_data.fotos_defeito, None))
+    for peca in os_data.pecas:
+        if peca.foto:
+            itens.append(('peca', peca.foto, peca.id))
+    return itens
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--apply', action='store_true',
+                    help='grava de verdade (sem isso é dry-run)')
+    args = ap.parse_args()
+    dry = not args.apply
+
+    criados = pulados = 0
+    nao_interpretadas = []
+
+    with app.app_context():
+        db.create_all()          # cria a tabela anexo se ainda não existir
+        ordens = OrdemServico.query.order_by(OrdemServico.id).all()
+        print(f'{"DRY-RUN — nada será gravado" if dry else "APLICANDO"} | '
+              f'{len(ordens)} OS para examinar\n')
+
+        for os_data in ordens:
+            for categoria, url, peca_id in coletar(os_data):
+                dados = interpretar(url)
+                if not dados:
+                    nao_interpretadas.append((os_data.id, categoria, url))
+                    print(f'  ?  OS {os_data.id:>5} {categoria:<12} URL não reconhecida')
+                    continue
+                ja_existe = Anexo.query.filter_by(
+                    os_id=os_data.id, public_id=dados['public_id']).first()
+                if ja_existe:
+                    pulados += 1
+                    print(f'  =  OS {os_data.id:>5} {categoria:<12} já migrado')
+                    continue
+                print(f'  +  OS {os_data.id:>5} {categoria:<12} {dados["public_id"]}'
+                      f' ({dados["resource_type"]}/{dados["tipo_entrega"]},'
+                      f' {dados["formato"] or "sem formato"})')
+                criados += 1
+                if not dry:
+                    db.session.add(Anexo(os_id=os_data.id, peca_id=peca_id,
+                                         categoria=categoria,
+                                         enviado_por='backfill', **dados))
+
+        if not dry and criados:
+            db.session.commit()
+
+    print(f'\n{"seriam criados" if dry else "criados"}: {criados}'
+          f' | já existentes: {pulados}'
+          f' | não interpretadas: {len(nao_interpretadas)}')
+    if nao_interpretadas:
+        print('\nURLs não interpretadas (nenhum registro criado para estas):')
+        for os_id, categoria, url in nao_interpretadas:
+            print(f'  OS {os_id} [{categoria}] {url}')
+    if dry:
+        print('\nNada foi gravado. Rode com --apply para aplicar.')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

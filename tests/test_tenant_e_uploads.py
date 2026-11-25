@@ -3,9 +3,11 @@
 Rodar:  python3 -m pytest tests/ -v
 """
 import io
+import json
 import os
 import sys
 import tempfile
+import urllib.error
 
 import pytest
 
@@ -20,7 +22,7 @@ os.environ.update({'CLOUDINARY_CLOUD_NAME': 'c', 'CLOUDINARY_API_KEY': 'k',
 
 import app as appmod                                    # noqa: E402
 from app import app as flask_app, db                    # noqa: E402
-from database import User, Filial, OrdemServico, PecaOS  # noqa: E402
+from database import User, Filial, OrdemServico, PecaOS, Anexo  # noqa: E402
 from werkzeug.security import generate_password_hash     # noqa: E402
 
 # ── Bytes de arquivos reais, para a validação por conteúdo ────────────────
@@ -43,11 +45,52 @@ def _isolar_ambiente():
 
     O login tem "5 per minute" por IP; como cada teste faz login, a suíte inteira
     bate no limite e passa a receber 429 em vez da resposta real.
+
+    O stub de upload devolve os campos das duas gerações: secure_url para o
+    salvar_foto ainda em uso, e public_id/resource_type/format/type para o
+    salvar_anexo. cloudinary.config NÃO é stubado — a entrega precisa do SDK
+    configurado de verdade, com estas credenciais falsas.
     """
     appmod.limiter.enabled = False
-    appmod.cloudinary.config = lambda **kw: None
-    appmod.cloudinary.uploader.upload = lambda f, **kw: {
-        'secure_url': f'https://res.cloudinary.com/c/image/upload/v1/minipa_os/{f.filename}'}
+
+    contador = {'n': 0}
+
+    def _upload(arquivo, **kw):
+        contador['n'] += 1
+        ext = (arquivo.filename.rsplit('.', 1)[-1].lower()
+               if '.' in arquivo.filename else '')
+        bruto = ext not in ('jpg', 'jpeg', 'png', 'webp', 'pdf')
+        pid = f"minipa_os/{kw['public_id']}" if kw.get('public_id') \
+            else f'minipa_os/{arquivo.filename}'
+        return {
+            'secure_url': f'https://res.cloudinary.com/c/image/upload/v1/{pid}',
+            'public_id': pid,
+            'resource_type': 'raw' if bruto else 'image',
+            'format': None if bruto else ext,
+            'type': kw.get('type', 'upload'),
+        }
+    appmod.cloudinary.uploader.upload = _upload
+
+    # A rota busca o arquivo pelo urlopen; devolvemos bytes sem sair da máquina.
+    class _Upstream:
+        def __init__(self, dados):
+            self._buf = io.BytesIO(dados)
+            self.headers = {'Content-Length': str(len(dados))}
+        def read(self, n=-1):
+            return self._buf.read(n)
+        def close(self):
+            self._buf.close()
+
+    appmod.CONTEUDO_FAKE = b'conteudo-do-anexo'
+    appmod.URLS_PEDIDAS = []
+
+    def _urlopen(url, timeout=None):
+        appmod.URLS_PEDIDAS.append(url)
+        if getattr(appmod, 'CLOUDINARY_FALHA', False):
+            raise urllib.error.HTTPError(url, 404, 'Not Found', {}, None)
+        return _Upstream(appmod.CONTEUDO_FAKE)
+    appmod.urllib.request.urlopen = _urlopen
+
     appmod._enviar_email = lambda *a, **k: None
     appmod._enviar_email_bg = lambda *a, **k: None
     appmod._enviar_os_fabricante = lambda *a, **k: None
@@ -347,3 +390,207 @@ def test_tecnico_sem_autorizada_nao_ve_nenhuma_os(ctx):
     criar_os(entrar('admin'), filial_id=ctx['filiais']['info'])
     html = entrar('orfao').get('/dashboard').get_data(as_text=True)
     assert 'Nenhuma OS encontrada' in html
+
+
+# ══════════════ Rota de anexo ══════════════
+
+def _anexo_na_os(os_id, **campos):
+    """Cria direto um Anexo na OS — o upload ainda não grava em Anexo."""
+    padrao = dict(categoria='nota_fiscal', public_id='minipa_os/abc123',
+                  resource_type='image', formato='pdf',
+                  tipo_entrega='authenticated', nome_original='nota.pdf')
+    padrao.update(campos)
+    with flask_app.app_context():
+        a = Anexo(os_id=os_id, **padrao)
+        db.session.add(a)
+        db.session.commit()
+        return a.id
+
+
+def _os_do(login='tecnico', filial=None):
+    criar_os(entrar(login), filial_id=filial)
+    with flask_app.app_context():
+        return OrdemServico.query.order_by(OrdemServico.id.desc()).first().id
+
+
+def test_dono_abre_o_anexo(ctx):
+    os_id = _os_do()
+    anexo_id = _anexo_na_os(os_id)
+    r = entrar('tecnico').get(f'/os/{os_id}/anexo/{anexo_id}')
+    assert r.status_code == 200
+    assert r.get_data() == appmod.CONTEUDO_FAKE
+
+
+def test_outra_autorizada_recebe_404(ctx):
+    os_id = _os_do('admin', ctx['filiais']['alheia'])
+    anexo_id = _anexo_na_os(os_id)
+    r = entrar('tecnico').get(f'/os/{os_id}/anexo/{anexo_id}')
+    assert r.status_code == 404
+    assert appmod.CONTEUDO_FAKE not in r.get_data()
+
+
+def test_deslogado_vai_para_o_login(ctx):
+    os_id = _os_do()
+    anexo_id = _anexo_na_os(os_id)
+    r = flask_app.test_client().get(f'/os/{os_id}/anexo/{anexo_id}')
+    assert r.status_code == 302
+    assert '/?next=' in r.headers['Location']
+
+
+def test_anexo_de_outra_os_da_404_mesmo_tendo_acesso_as_duas(ctx):
+    """Trocar o id do anexo na URL não pode entregar o arquivo da outra OS."""
+    cliente = entrar('tecnico')
+    criar_os(cliente)
+    criar_os(cliente)
+    with flask_app.app_context():
+        a, b = OrdemServico.query.order_by(OrdemServico.id).all()
+        os_de_a, os_de_b = a.id, b.id
+    anexo_de_b = _anexo_na_os(os_de_b, public_id='minipa_os/outro')
+    r = cliente.get(f'/os/{os_de_a}/anexo/{anexo_de_b}')
+    assert r.status_code == 404
+
+
+def test_headers_de_seguranca_e_content_type_fixo(ctx):
+    os_id = _os_do()
+    anexo_id = _anexo_na_os(os_id, formato='pdf', nome_original='nota.pdf')
+    r = entrar('tecnico').get(f'/os/{os_id}/anexo/{anexo_id}')
+    assert r.headers['Content-Type'].startswith('application/pdf')
+    assert r.headers['X-Content-Type-Options'] == 'nosniff'
+    assert 'private' in r.headers['Cache-Control']
+    assert r.headers['Content-Disposition'].startswith('inline')
+    assert 'nota.pdf' in r.headers['Content-Disposition']
+
+
+def test_formato_fora_da_lista_nao_e_servido(ctx):
+    os_id = _os_do()
+    anexo_id = _anexo_na_os(os_id, formato='svg')
+    assert entrar('tecnico').get(f'/os/{os_id}/anexo/{anexo_id}').status_code == 404
+
+
+def test_falha_do_cloudinary_nao_expoe_url(ctx):
+    os_id = _os_do()
+    anexo_id = _anexo_na_os(os_id)
+    appmod.CLOUDINARY_FALHA = True
+    try:
+        r = entrar('tecnico').get(f'/os/{os_id}/anexo/{anexo_id}')
+    finally:
+        appmod.CLOUDINARY_FALHA = False
+    assert r.status_code == 502
+    corpo = r.get_data(as_text=True)
+    assert 'Não foi possível abrir o anexo' in corpo
+    assert 'cloudinary' not in corpo.lower()
+
+
+def test_anexo_authenticated_usa_url_assinada(ctx):
+    os_id = _os_do()
+    anexo_id = _anexo_na_os(os_id, tipo_entrega='authenticated')
+    entrar('tecnico').get(f'/os/{os_id}/anexo/{anexo_id}')
+    pedida = appmod.URLS_PEDIDAS[-1]
+    assert '/authenticated/' in pedida
+    assert 's--' in pedida, 'authenticated precisa ir assinada'
+
+
+def test_anexo_legado_abre_sem_assinatura(ctx):
+    """tipo_entrega='upload' passa pela mesma rota, com o mesmo escopo."""
+    os_id = _os_do()
+    anexo_id = _anexo_na_os(os_id, tipo_entrega='upload',
+                            public_id='minipa_os/legado')
+    assert entrar('tecnico').get(f'/os/{os_id}/anexo/{anexo_id}').status_code == 200
+    pedida = appmod.URLS_PEDIDAS[-1]
+    assert '/upload/' in pedida and 's--' not in pedida
+
+
+def test_anexo_legado_bloqueia_outra_autorizada(ctx):
+    os_id = _os_do('admin', ctx['filiais']['alheia'])
+    anexo_id = _anexo_na_os(os_id, tipo_entrega='upload')
+    assert entrar('tecnico').get(f'/os/{os_id}/anexo/{anexo_id}').status_code == 404
+
+
+def test_sem_credenciais_do_cloudinary_a_rota_devolve_502(ctx, monkeypatch):
+    os_id = _os_do()
+    anexo_id = _anexo_na_os(os_id)
+    monkeypatch.delenv('CLOUDINARY_CLOUD_NAME', raising=False)
+    r = entrar('tecnico').get(f'/os/{os_id}/anexo/{anexo_id}')
+    assert r.status_code == 502
+
+
+# ══════════════ Backfill ══════════════
+
+URL_LEGADA = ('https://res.cloudinary.com/dvhr9h3zb/image/upload/v1788375295/'
+              'minipa_os/nota-fiscal-827446_a1b2c3.pdf')
+
+
+def test_backfill_interpreta_url_legada():
+    from backfill_anexos import interpretar
+    d = interpretar(URL_LEGADA)
+    assert d['public_id'] == 'minipa_os/nota-fiscal-827446_a1b2c3'
+    assert d['resource_type'] == 'image'
+    assert d['tipo_entrega'] == 'upload'
+    assert d['formato'] == 'pdf'
+    assert d['nome_original'] == 'nota-fiscal-827446_a1b2c3.pdf'
+
+
+def test_backfill_interpreta_raw_e_assinada():
+    from backfill_anexos import interpretar
+    raw = interpretar('https://res.cloudinary.com/c/raw/upload/v1/minipa_os/abc.pdf')
+    assert raw['resource_type'] == 'raw' and raw['formato'] == 'pdf'
+    assinada = interpretar(
+        'https://res.cloudinary.com/c/image/authenticated/s--Xy9--/v1/minipa_os/zz.jpg')
+    assert assinada['tipo_entrega'] == 'authenticated'
+    assert assinada['public_id'] == 'minipa_os/zz'
+
+
+@pytest.mark.parametrize('ruim', [
+    None, '', 'não é url', 'https://exemplo.com/foto.jpg', 'ftp://res.cloudinary.com/x'])
+def test_backfill_rejeita_url_invalida(ruim):
+    from backfill_anexos import interpretar
+    assert interpretar(ruim) is None
+
+
+def test_backfill_cria_registros_e_e_idempotente(ctx):
+    from backfill_anexos import interpretar, coletar
+    with flask_app.app_context():
+        osd = OrdemServico(cliente='C', equipamento='ET', serie='S1', status='Aberta',
+                           filial_id=ctx['filiais']['info'],
+                           foto_nf=URL_LEGADA,
+                           fotos_defeito=json.dumps([
+                               'https://res.cloudinary.com/c/image/upload/v1/minipa_os/d1.jpg',
+                               'url-quebrada']))
+        db.session.add(osd)
+        db.session.commit()
+        db.session.add(PecaOS(os_id=osd.id, descricao='Display', quantidade=1,
+                              foto='https://res.cloudinary.com/c/image/upload/v1/minipa_os/p1.png'))
+        db.session.commit()
+        os_id = osd.id
+
+        def rodar():
+            criados, invalidas = 0, []
+            od = db.session.get(OrdemServico, os_id)
+            for categoria, url, peca_id in coletar(od):
+                dados = interpretar(url)
+                if not dados:
+                    invalidas.append(url)
+                    continue
+                if Anexo.query.filter_by(os_id=os_id,
+                                         public_id=dados['public_id']).first():
+                    continue
+                db.session.add(Anexo(os_id=os_id, peca_id=peca_id, categoria=categoria,
+                                     enviado_por='backfill', **dados))
+                criados += 1
+            db.session.commit()
+            return criados, invalidas
+
+        criados, invalidas = rodar()
+        assert criados == 3, 'nota fiscal + 1 defeito válido + 1 peça'
+        assert invalidas == ['url-quebrada'], 'a URL ruim não pode interromper o resto'
+        assert all(a.tipo_entrega == 'upload' for a in Anexo.query.all())
+
+        criados2, _ = rodar()
+        assert criados2 == 0, 'rodar de novo não pode duplicar'
+        assert Anexo.query.filter_by(os_id=os_id).count() == 3
+
+        # colunas antigas preservadas
+        od = db.session.get(OrdemServico, os_id)
+        assert od.foto_nf == URL_LEGADA
+        assert od.fotos_defeito is not None
+        assert PecaOS.query.filter_by(os_id=os_id).one().foto is not None
