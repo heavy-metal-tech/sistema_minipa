@@ -8,6 +8,7 @@
 <div class="content">
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
 
+{% set UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'] %}
     <!-- Lista de autorizadas -->
     <div class="card">
       <h2 style="font-size:15px;font-weight:600;margin-bottom:16px;">Autorizadas Cadastradas</h2>
@@ -15,7 +16,7 @@
         <thead><tr><th>Nome</th><th>Cidade/UF</th><th>E-mail</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {% for f in filiais %}
-          <tr>
+          <tr id="linha-{{ f.id }}">
             <td><strong>{{ f.nome }}</strong></td>
             <td style="color:#6b7280;">{{ f.cidade or '—' }}/{{ f.estado or '—' }}</td>
             <td>
@@ -36,7 +37,10 @@
                 <span class="badge" style="background:#fef2f2;color:#d42b2b;">Inativa</span>
               {% endif %}
             </td>
-            <td>
+            <td style="white-space:nowrap;">
+              <button type="button" onclick="editarAutorizada({{ f.id }}, true)"
+                title="Editar dados da autorizada"
+                style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:15px;padding:2px 4px;">✏️</button>
               <form method="POST" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="delete">
@@ -46,8 +50,47 @@
               </form>
             </td>
           </tr>
+          <!-- Modo de edição desta autorizada -->
+          <tr id="edicao-{{ f.id }}" style="display:none;background:#f8fbff;">
+            <td colspan="5" style="padding:14px;">
+              <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="editar">
+                <input type="hidden" name="id" value="{{ f.id }}">
+                <div class="form-group" style="margin-bottom:10px;">
+                  <label class="form-label">Nome da Autorizada</label>
+                  <input class="form-control" name="nome" value="{{ f.nome }}" required>
+                </div>
+                <div class="form-row col-2" style="margin-bottom:10px;">
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">Cidade</label>
+                    <input class="form-control" name="cidade" value="{{ f.cidade or '' }}" placeholder="São Paulo">
+                  </div>
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">UF</label>
+                    <select name="estado" class="form-control">
+                      <option value="">—</option>
+                      {% for uf in UFS %}
+                        <option value="{{ uf }}" {{ 'selected' if f.estado == uf }}>{{ uf }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group" style="margin-bottom:12px;">
+                  <label class="form-label">E-mail da Autorizada</label>
+                  <input class="form-control" name="email" type="email" value="{{ f.email or '' }}"
+                         placeholder="contato@autorizada.com.br">
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <button type="submit" class="btn btn-blue btn-sm">Salvar alterações</button>
+                  <button type="button" class="btn btn-outline btn-sm"
+                          onclick="editarAutorizada({{ f.id }}, false)">Cancelar</button>
+                </div>
+              </form>
+            </td>
+          </tr>
           {% else %}
-          <tr><td colspan="4" style="text-align:center;color:#9ca3af;padding:20px;">Nenhuma autorizada cadastrada.</td></tr>
+          <tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:20px;">Nenhuma autorizada cadastrada.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -194,4 +237,23 @@
   </div>
 
 </div>
+
+<script>
+// Alterna a linha da autorizada entre exibição e edição. Só uma por vez, para
+// não deixar dois formulários da mesma tabela abertos ao mesmo tempo.
+function editarAutorizada(id, abrir) {
+  if (abrir) {
+    document.querySelectorAll('tr[id^="edicao-"]').forEach(function (tr) {
+      var outro = tr.id.substring(7);
+      tr.style.display = 'none';
+      var linha = document.getElementById('linha-' + outro);
+      if (linha) linha.style.display = '';
+    });
+  }
+  document.getElementById('linha-' + id).style.display = abrir ? 'none' : '';
+  var edicao = document.getElementById('edicao-' + id);
+  edicao.style.display = abrir ? '' : 'none';
+  if (abrir) edicao.querySelector('input[name="nome"]').focus();
+}
+</script>
 {% endblock %}

@@ -1590,6 +1590,26 @@ def autorizadas():
             if f:
                 f.email = request.form.get('email') or None
             flash('E-mail atualizado!', 'success')
+        elif action == 'editar':
+            try:
+                f = Filial.query.get(int(request.form.get('id')))
+            except (TypeError, ValueError):
+                f = None
+            nome = (request.form.get('nome') or '').strip()
+            if not f:
+                flash('Autorizada não encontrada.', 'error')
+            elif not nome:
+                flash('O nome da autorizada não pode ficar vazio.', 'error')
+            else:
+                antigo = f.nome
+                f.nome = nome
+                f.cidade = (request.form.get('cidade') or '').strip() or None
+                f.estado = (request.form.get('estado') or '').strip() or None
+                f.email = (request.form.get('email') or '').strip() or None
+                if antigo != nome:
+                    flash(f'Autorizada "{antigo}" atualizada para "{nome}".', 'success')
+                else:
+                    flash(f'Autorizada "{nome}" atualizada.', 'success')
         elif action == 'delete':
             f = Filial.query.get(int(request.form.get('id')))
             if f: db.session.delete(f)
