@@ -617,3 +617,75 @@ def test_url_do_cloudinary_nunca_chega_ao_html(ctx):
         html = cliente.get(rota).get_data(as_text=True)
         assert 'res.cloudinary.com' not in html, rota
         assert f'/os/{oid}/anexo/' in html, rota
+
+
+# ══════════════ Descoberta de formato nos anexos legados ══════════════
+
+@pytest.fixture
+def cloudinary_consultado(monkeypatch):
+    """Simula a Admin API e o download usados para descobrir o formato."""
+    import backfill_anexos as bf
+    estado = {'api': {}, 'conteudo': b'%PDF-1.4\n' + b'\0' * 8, 'chamadas_api': 0}
+
+    def _resource(*a, **k):
+        estado['chamadas_api'] += 1
+        if estado['api'] is None:
+            raise RuntimeError('recurso não encontrado')
+        return estado['api']
+
+    class _Resp:
+        def __enter__(s): return s
+        def __exit__(s, *a): return False
+        def read(s, n=-1):
+            if estado['conteudo'] is None:
+                raise OSError('sem rede')
+            return estado['conteudo']
+
+    monkeypatch.setattr(bf.cloudinary.api, 'resource', _resource)
+    monkeypatch.setattr(bf.urllib.request, 'urlopen', lambda r, timeout=None: _Resp())
+    return estado
+
+
+BASE_SEM_FORMATO = dict(public_id='minipa_os/x', resource_type='raw',
+                        tipo_entrega='upload', formato='')
+
+
+def test_formato_da_url_nao_consulta_cloudinary(cloudinary_consultado):
+    from backfill_anexos import descobrir_formato
+    assert descobrir_formato(dict(BASE_SEM_FORMATO, formato='pdf')) == ('pdf', 'url')
+    assert cloudinary_consultado['chamadas_api'] == 0
+
+
+def test_formato_vem_da_admin_api_quando_ela_sabe(cloudinary_consultado):
+    from backfill_anexos import descobrir_formato
+    cloudinary_consultado['api'] = {'format': 'PNG'}
+    assert descobrir_formato(dict(BASE_SEM_FORMATO)) == ('png', 'api')
+
+
+def test_formato_vem_do_conteudo_quando_a_api_nao_sabe(cloudinary_consultado):
+    """Para 'raw' a API costuma não devolver format; o arquivo decide."""
+    from backfill_anexos import descobrir_formato
+    cloudinary_consultado['api'] = {}
+    assert descobrir_formato(dict(BASE_SEM_FORMATO)) == ('pdf', 'conteúdo')
+
+
+def test_conteudo_manda_sobre_a_suposicao_de_pdf(cloudinary_consultado):
+    """Um JPEG sem extensão não pode virar 'pdf' — o navegador recusaria."""
+    from backfill_anexos import descobrir_formato
+    cloudinary_consultado['api'] = {}
+    cloudinary_consultado['conteudo'] = b'\xff\xd8\xff\xe0' + b'\0' * 12
+    assert descobrir_formato(dict(BASE_SEM_FORMATO)) == ('jpg', 'conteúdo')
+
+
+def test_tipo_desconhecido_fica_vazio_em_vez_de_chutar(cloudinary_consultado):
+    from backfill_anexos import descobrir_formato
+    cloudinary_consultado['api'] = {}
+    cloudinary_consultado['conteudo'] = b'PK\x03\x04' + b'\0' * 12   # zip/docx
+    assert descobrir_formato(dict(BASE_SEM_FORMATO)) == ('', 'não identificado')
+
+
+def test_api_e_download_falhando_nao_quebram(cloudinary_consultado):
+    from backfill_anexos import descobrir_formato
+    cloudinary_consultado['api'] = None        # levanta
+    cloudinary_consultado['conteudo'] = None   # levanta
+    assert descobrir_formato(dict(BASE_SEM_FORMATO)) == ('', 'não identificado')

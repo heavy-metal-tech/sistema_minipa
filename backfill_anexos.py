@@ -10,12 +10,18 @@ Idempotente: o índice único (os_id, public_id) impede duplicata, e o script
 confere antes de inserir. Rodar de novo só pega o que entrou no intervalo.
 """
 import argparse
+import io
 import json
 import re
 import sys
 import urllib.parse
+import urllib.request
 
-from app import app
+import cloudinary
+import cloudinary.api
+from cloudinary.utils import cloudinary_url
+
+from app import app, _configurar_cloudinary, _detectar_tipo
 from database import db, OrdemServico, Anexo
 
 
@@ -86,6 +92,62 @@ def interpretar(url):
     }
 
 
+def _formato_pela_api(public_id, resource_type, tipo_entrega):
+    """Pergunta o formato à Admin API do Cloudinary. '' se ela não souber."""
+    try:
+        info = cloudinary.api.resource(public_id,
+                                       resource_type=resource_type or 'image',
+                                       type=tipo_entrega or 'upload')
+    except Exception:
+        return ''
+    return (info.get('format') or '').lower()
+
+
+def _formato_pelo_conteudo(public_id, resource_type, tipo_entrega):
+    """Baixa os primeiros bytes e identifica pela assinatura. '' se não souber.
+
+    É o recurso final: para arquivos 'raw' a Admin API costuma não devolver
+    format, e o conteúdo é a única fonte que não depende de convenção de nome.
+    """
+    try:
+        url, _ = cloudinary_url(public_id,
+                                resource_type=resource_type or 'image',
+                                type=tipo_entrega or 'upload',
+                                sign_url=(tipo_entrega == 'authenticated'),
+                                secure=True)
+        req = urllib.request.Request(url, headers={'Range': 'bytes=0-15'})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            cabecalho = resp.read(16)
+    except Exception:
+        return ''
+    return _detectar_tipo(io.BytesIO(cabecalho)) or ''
+
+
+def descobrir_formato(dados):
+    """Preenche o formato quando a URL legada não trazia extensão.
+
+    Alguns anexos antigos subiram como 'raw' com public_id aleatório, então o
+    formato não está na URL. Assumir PDF seria chute: gravar 'pdf' num JPEG faz
+    o navegador recusar o arquivo. Pergunta-se ao Cloudinary, e se ele não
+    souber, lê-se a assinatura do próprio arquivo.
+
+    Devolve (formato, origem) — origem serve para mostrar na tela de onde veio.
+    """
+    if dados.get('formato'):
+        return dados['formato'], 'url'
+    if not _configurar_cloudinary():
+        return '', 'sem credenciais'
+    fmt = _formato_pela_api(dados['public_id'], dados['resource_type'],
+                            dados['tipo_entrega'])
+    if fmt:
+        return fmt, 'api'
+    fmt = _formato_pelo_conteudo(dados['public_id'], dados['resource_type'],
+                                 dados['tipo_entrega'])
+    if fmt:
+        return fmt, 'conteúdo'
+    return '', 'não identificado'
+
+
 def coletar(os_data):
     """Todos os anexos legados de uma OS: (categoria, url, peca_id)."""
     itens = []
@@ -137,9 +199,12 @@ def main():
                     pulados += 1
                     print(f'  =  OS {os_data.id:>5} {categoria:<12} já migrado')
                     continue
+                # URL sem extensão: descobre o formato real em vez de deixar vazio
+                dados['formato'], origem = descobrir_formato(dados)
+                marca = '' if origem == 'url' else f' [formato via {origem}]'
                 print(f'  +  OS {os_data.id:>5} {categoria:<12} {dados["public_id"]}'
                       f' ({dados["resource_type"]}/{dados["tipo_entrega"]},'
-                      f' {dados["formato"] or "sem formato"})')
+                      f' {dados["formato"] or "SEM FORMATO"}){marca}')
                 criados += 1
                 if not dry:
                     db.session.add(Anexo(os_id=os_data.id, peca_id=peca_id,

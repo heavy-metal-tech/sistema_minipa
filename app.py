@@ -1917,10 +1917,15 @@ def admin_backfill_anexos():
         flash('Sem permissão.', 'error')
         return redirect(url_for('dashboard'))
 
-    from backfill_anexos import interpretar, coletar, banco_alvo
+    from backfill_anexos import interpretar, coletar, banco_alvo, descobrir_formato
 
     def montar_plano():
-        """O que o backfill faria. Não grava nada."""
+        """O que o backfill faria. Não grava nada.
+
+        Para quem veio sem extensão na URL, o formato é descoberto aqui — pela
+        Admin API ou pela assinatura do arquivo — e aparece na tela antes de
+        qualquer gravação.
+        """
         criar, existentes, invalidas = [], [], []
         for os_data in OrdemServico.query.order_by(OrdemServico.id).all():
             for categoria, url, peca_id in coletar(os_data):
@@ -1932,7 +1937,8 @@ def admin_backfill_anexos():
                                          public_id=dados['public_id']).first():
                     existentes.append((os_data.id, categoria, dados['public_id']))
                     continue
-                criar.append((os_data.id, categoria, peca_id, dados))
+                dados['formato'], origem = descobrir_formato(dados)
+                criar.append((os_data.id, categoria, peca_id, dados, origem))
         return criar, existentes, invalidas
 
     banco = banco_alvo(app.config['SQLALCHEMY_DATABASE_URI'])
@@ -1942,7 +1948,7 @@ def admin_backfill_anexos():
     if request.method == 'POST':
         try:
             criar, _, _ = montar_plano()
-            for os_id, categoria, peca_id, dados in criar:
+            for os_id, categoria, peca_id, dados, _origem in criar:
                 db.session.add(Anexo(os_id=os_id, peca_id=peca_id,
                                      categoria=categoria,
                                      enviado_por='backfill', **dados))
@@ -1959,14 +1965,19 @@ def admin_backfill_anexos():
         if not criar:
             return '<tr><td colspan="5" style="color:#6b7280;padding:12px;">Nada a criar.</td></tr>'
         saida = ''
-        for os_id, categoria, _peca, d in criar:
-            sem_formato = not d['formato']
-            aviso = (' <span style="color:#b91c1c;font-weight:600;">sem formato — '
-                     'não abrirá pela rota</span>') if sem_formato else ''
+        for os_id, categoria, _peca, d, origem in criar:
+            if not d['formato']:
+                celula = ('<span style="color:#b91c1c;font-weight:600;">não identificado — '
+                          'não abrirá pela rota</span>')
+            elif origem == 'url':
+                celula = d['formato']
+            else:
+                celula = (f'{d["formato"]} <span style="color:#15803d;font-size:11px;">'
+                          f'(descoberto via {origem})</span>')
             saida += (f'<tr><td>{os_id}</td><td>{categoria}</td>'
                       f'<td style="font-family:monospace;font-size:11.5px;">{d["public_id"]}</td>'
                       f'<td>{d["resource_type"]}/{d["tipo_entrega"]}</td>'
-                      f'<td>{d["formato"] or "—"}{aviso}</td></tr>')
+                      f'<td>{celula}</td></tr>')
         return saida
 
     def linhas_invalidas():
@@ -1977,7 +1988,8 @@ def admin_backfill_anexos():
                 f'{len(invalidas)} URL(s) não interpretada(s) — nenhum registro criado</h3>'
                 f'<ul style="font-size:12px;color:#6b7280;padding-left:18px;">{itens}</ul>')
 
-    sem_formato = sum(1 for _o, _c, _p, d in criar if not d['formato'])
+    sem_formato = sum(1 for _o, _c, _p, d, _g in criar if not d['formato'])
+    descobertos = sum(1 for _o, _c, _p, d, g in criar if d['formato'] and g != 'url')
     if aplicado is None:
         faixa = ('<div style="padding:10px 14px;border-radius:7px;background:#eff6ff;'
                  'border:1px solid #bfdbfe;color:#1e40af;font-size:13px;">'
@@ -2008,6 +2020,7 @@ def admin_backfill_anexos():
       <b style="color:#15803d;">{len(criar)}</b> a criar &nbsp;|&nbsp;
       <b>{len(existentes)}</b> já existentes &nbsp;|&nbsp;
       <b style="color:#b91c1c;">{len(invalidas)}</b> não interpretadas
+      {f'&nbsp;|&nbsp; <b style="color:#15803d;">{descobertos}</b> formato descoberto' if descobertos else ''}
       {f'&nbsp;|&nbsp; <b style="color:#b91c1c;">{sem_formato}</b> sem formato' if sem_formato else ''}
     </p>
     <table>
