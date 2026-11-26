@@ -64,7 +64,10 @@ def cloudinary_falso(monkeypatch, tmp_path):
 
 
 def rodar(estado, *extra):
-    sys.argv = ['migrar', '--csv', estado['csv'], *extra]
+    # --permitir-sqlite porque a suíte roda num SQLite temporário, que o guard
+    # do script barra por padrão para não deixar ninguém "rodar em produção"
+    # sem a DATABASE_URL definida.
+    sys.argv = ['migrar', '--csv', estado['csv'], '--permitir-sqlite', *extra]
     return mig.main()
 
 
@@ -184,3 +187,32 @@ def test_ainda_responde_classifica_os_status(monkeypatch):
         raise OSError('sem rede')
     monkeypatch.setattr(mig.urllib.request, 'urlopen', _rede)
     assert mig.ainda_responde('http://x') is None, 'erro de rede é inconclusivo, não sucesso'
+
+
+# ══════════════ Guard do banco alvo ══════════════
+
+def test_senha_do_banco_nunca_aparece_na_saida():
+    from backfill_anexos import banco_alvo
+    uri = 'postgresql://usuario:SenhaSecreta123@ep-xyz.sa-east-1.aws.neon.tech/db?sslmode=require'
+    saida = banco_alvo(uri)
+    assert 'SenhaSecreta123' not in saida
+    assert 'usuario' in saida and 'neon.tech' in saida
+
+
+def test_sqlite_e_barrado_por_padrao(anexos, cloudinary_falso, capsys):
+    """Sem DATABASE_URL o app cai no SQLite; rodar ali daria 'nada a fazer'
+    parecendo sucesso, sem ter tocado em produção nenhuma."""
+    sys.argv = ['migrar', '--csv', cloudinary_falso['csv'], '--apply']
+    codigo = mig.main()
+    assert codigo == 2, 'precisa abortar'
+    saida = capsys.readouterr().out
+    assert 'ABORTADO' in saida and 'DATABASE_URL' in saida
+    assert cloudinary_falso['renames'] == [], 'nada pode ter sido convertido'
+    with flask_app.app_context():
+        assert Anexo.query.filter_by(tipo_entrega='upload').count() == 3
+
+
+def test_banco_alvo_aparece_na_primeira_linha(anexos, cloudinary_falso, capsys):
+    rodar(cloudinary_falso)
+    primeira = capsys.readouterr().out.strip().split('\n')[0]
+    assert primeira.startswith('Banco alvo:'), primeira

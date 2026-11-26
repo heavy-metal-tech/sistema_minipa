@@ -30,6 +30,7 @@ from cloudinary.utils import cloudinary_url
 
 from app import app, _configurar_cloudinary
 from database import db, Anexo
+from backfill_anexos import conferir_banco
 
 CSV_PADRAO = 'backup_anexos_%s.csv'
 
@@ -68,6 +69,8 @@ def main():
     ap.add_argument('--apply', action='store_true', help='converte (sem isso é dry-run)')
     ap.add_argument('--limit', type=int, default=None, help='converte no máximo N arquivos')
     ap.add_argument('--csv', default=None, help='caminho do CSV de backup')
+    ap.add_argument('--permitir-sqlite', action='store_true',
+                    help='deixa rodar contra o SQLite local (por padrão aborta)')
     args = ap.parse_args()
     dry = not args.apply
     caminho_csv = args.csv or CSV_PADRAO % datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -75,6 +78,8 @@ def main():
     convertidos, falhas, nao_confirmados = 0, [], []
 
     with app.app_context():
+        if not conferir_banco(args.permitir_sqlite):
+            return 2
         if not _configurar_cloudinary():
             print('ERRO: credenciais do Cloudinary ausentes no ambiente.', file=sys.stderr)
             return 2

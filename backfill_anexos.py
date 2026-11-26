@@ -13,9 +13,44 @@ import argparse
 import json
 import re
 import sys
+import urllib.parse
 
 from app import app
 from database import db, OrdemServico, Anexo
+
+
+def banco_alvo(uri):
+    """URI do banco com a senha mascarada, para imprimir sem vazar credencial."""
+    try:
+        partes = urllib.parse.urlsplit(uri)
+        if partes.password:
+            netloc = partes.netloc.replace(f':{partes.password}@', ':***@')
+            partes = partes._replace(netloc=netloc)
+        return urllib.parse.urlunsplit(partes)
+    except Exception:
+        return '(não foi possível interpretar a URL do banco)'
+
+
+def conferir_banco(permitir_sqlite):
+    """Mostra contra qual banco vamos rodar e barra o SQLite local.
+
+    Sem DATABASE_URL o app cai no SQLite de desenvolvimento, e o script roda
+    até o fim relatando "0 anexos" — saída que parece legítima e não mexeu em
+    produção nenhuma. Melhor abortar com a razão na tela.
+    """
+    uri = app.config['SQLALCHEMY_DATABASE_URI']
+    print(f'Banco alvo: {banco_alvo(uri)}')
+    if uri.startswith('sqlite'):
+        if not permitir_sqlite:
+            print('\nABORTADO: isto é um SQLite local, não o banco de produção.')
+            print('A variável DATABASE_URL não está definida neste ambiente.')
+            print('Rodar aqui não altera a produção e devolveria uma saída enganosa.')
+            print('\nDefina DATABASE_URL, ou passe --permitir-sqlite se a intenção')
+            print('for mesmo mexer no banco local.')
+            return False
+        print('  (SQLite local, liberado por --permitir-sqlite)')
+    print()
+    return True
 
 # https://res.cloudinary.com/<cloud>/<resource_type>/<type>/v123/<public_id>.<fmt>
 _URL = re.compile(
@@ -73,6 +108,8 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--apply', action='store_true',
                     help='grava de verdade (sem isso é dry-run)')
+    ap.add_argument('--permitir-sqlite', action='store_true',
+                    help='deixa rodar contra o SQLite local (por padrão aborta)')
     args = ap.parse_args()
     dry = not args.apply
 
@@ -80,6 +117,8 @@ def main():
     nao_interpretadas = []
 
     with app.app_context():
+        if not conferir_banco(args.permitir_sqlite):
+            return 2
         db.create_all()          # cria a tabela anexo se ainda não existir
         ordens = OrdemServico.query.order_by(OrdemServico.id).all()
         print(f'{"DRY-RUN — nada será gravado" if dry else "APLICANDO"} | '
