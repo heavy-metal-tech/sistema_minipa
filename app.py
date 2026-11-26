@@ -4,7 +4,7 @@ import cloudinary, cloudinary.uploader
 from cloudinary.utils import cloudinary_url
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
@@ -1903,6 +1903,126 @@ def enviar_acesso_usuario(id):
     flash(f'Senha de {user.nome_completo} redefinida. Enviando para {destino} — {origem}.{cc_txt}',
           'success')
     return redirect(url_for('dashboard'))
+
+@app.route('/admin/backfill_anexos', methods=['GET', 'POST'])
+@login_required
+def admin_backfill_anexos():
+    """Roda o backfill de dentro do app, onde a DATABASE_URL já está definida.
+
+    O plano de Fundo: o Shell do Render não existe no plano gratuito, e rodar o
+    script fora dali cai no SQLite local. Aqui a conexão é a mesma que o sistema
+    usa, então não há como mirar o banco errado.
+    """
+    if not current_user.is_admin:
+        flash('Sem permissão.', 'error')
+        return redirect(url_for('dashboard'))
+
+    from backfill_anexos import interpretar, coletar, banco_alvo
+
+    def montar_plano():
+        """O que o backfill faria. Não grava nada."""
+        criar, existentes, invalidas = [], [], []
+        for os_data in OrdemServico.query.order_by(OrdemServico.id).all():
+            for categoria, url, peca_id in coletar(os_data):
+                dados = interpretar(url)
+                if not dados:
+                    invalidas.append((os_data.id, categoria, url))
+                    continue
+                if Anexo.query.filter_by(os_id=os_data.id,
+                                         public_id=dados['public_id']).first():
+                    existentes.append((os_data.id, categoria, dados['public_id']))
+                    continue
+                criar.append((os_data.id, categoria, peca_id, dados))
+        return criar, existentes, invalidas
+
+    banco = banco_alvo(app.config['SQLALCHEMY_DATABASE_URI'])
+    total_os = OrdemServico.query.count()
+    aplicado = None
+
+    if request.method == 'POST':
+        try:
+            criar, _, _ = montar_plano()
+            for os_id, categoria, peca_id, dados in criar:
+                db.session.add(Anexo(os_id=os_id, peca_id=peca_id,
+                                     categoria=categoria,
+                                     enviado_por='backfill', **dados))
+            db.session.commit()
+            aplicado = len(criar)
+        except Exception as exc:
+            db.session.rollback()
+            app.logger.exception('Erro no backfill de anexos')
+            aplicado = f'ERRO: {type(exc).__name__}: {exc}'
+
+    criar, existentes, invalidas = montar_plano()
+
+    def linhas_criar():
+        if not criar:
+            return '<tr><td colspan="5" style="color:#6b7280;padding:12px;">Nada a criar.</td></tr>'
+        saida = ''
+        for os_id, categoria, _peca, d in criar:
+            sem_formato = not d['formato']
+            aviso = (' <span style="color:#b91c1c;font-weight:600;">sem formato — '
+                     'não abrirá pela rota</span>') if sem_formato else ''
+            saida += (f'<tr><td>{os_id}</td><td>{categoria}</td>'
+                      f'<td style="font-family:monospace;font-size:11.5px;">{d["public_id"]}</td>'
+                      f'<td>{d["resource_type"]}/{d["tipo_entrega"]}</td>'
+                      f'<td>{d["formato"] or "—"}{aviso}</td></tr>')
+        return saida
+
+    def linhas_invalidas():
+        if not invalidas:
+            return ''
+        itens = ''.join(f'<li>OS {o} [{c}] <code>{u}</code></li>' for o, c, u in invalidas)
+        return (f'<h3 style="font-size:13px;margin:18px 0 8px;color:#b91c1c;">'
+                f'{len(invalidas)} URL(s) não interpretada(s) — nenhum registro criado</h3>'
+                f'<ul style="font-size:12px;color:#6b7280;padding-left:18px;">{itens}</ul>')
+
+    sem_formato = sum(1 for _o, _c, _p, d in criar if not d['formato'])
+    if aplicado is None:
+        faixa = ('<div style="padding:10px 14px;border-radius:7px;background:#eff6ff;'
+                 'border:1px solid #bfdbfe;color:#1e40af;font-size:13px;">'
+                 'Simulação — nada foi gravado ainda.</div>')
+    elif isinstance(aplicado, int):
+        faixa = (f'<div style="padding:10px 14px;border-radius:7px;background:#f0fdf4;'
+                 f'border:1px solid #bbf7d0;color:#15803d;font-size:13px;font-weight:600;">'
+                 f'{aplicado} registro(s) criado(s).</div>')
+    else:
+        faixa = (f'<div style="padding:10px 14px;border-radius:7px;background:#fef2f2;'
+                 f'border:1px solid #fecaca;color:#b91c1c;font-size:13px;">'
+                 f'{aplicado}<br>Nada foi gravado — a transação foi revertida.</div>')
+
+    return f'''<style>
+      body{{font-family:system-ui,sans-serif;max-width:1000px;margin:40px auto;padding:0 20px;}}
+      table{{border-collapse:collapse;width:100%;font-size:13px;margin-top:10px;}}
+      td,th{{padding:6px 9px;border-bottom:1px solid #eee;text-align:left;}}
+      th{{background:#f3f4f6;}}
+      code{{background:#f3f4f6;padding:1px 4px;border-radius:3px;}}
+      .btn{{background:#0077c8;color:#fff;border:0;padding:11px 26px;border-radius:6px;
+            cursor:pointer;font-size:15px;margin-top:18px;}}
+    </style>
+    <h2>Backfill de anexos</h2>
+    <p style="font-size:12.5px;color:#6b7280;">Banco alvo: <code>{banco}</code></p>
+    {faixa}
+    <p style="font-size:13px;margin-top:14px;">
+      <b>{total_os}</b> OS examinadas &nbsp;|&nbsp;
+      <b style="color:#15803d;">{len(criar)}</b> a criar &nbsp;|&nbsp;
+      <b>{len(existentes)}</b> já existentes &nbsp;|&nbsp;
+      <b style="color:#b91c1c;">{len(invalidas)}</b> não interpretadas
+      {f'&nbsp;|&nbsp; <b style="color:#b91c1c;">{sem_formato}</b> sem formato' if sem_formato else ''}
+    </p>
+    <table>
+      <tr><th>OS</th><th>Categoria</th><th>public_id</th><th>tipo</th><th>formato</th></tr>
+      {linhas_criar()}
+    </table>
+    {linhas_invalidas()}
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{generate_csrf()}">
+      <button class="btn" {'disabled style="opacity:.4;cursor:not-allowed;"' if not criar else ''}
+              onclick="return confirm('Criar {len(criar)} registro(s) em anexo?')">
+        Aplicar backfill
+      </button>
+      &nbsp;<a href="/dashboard" style="color:#6b7280;">Voltar</a>
+    </form>'''
 
 @app.route('/admin/cadastrar_autorizadas_faltantes')
 @login_required
