@@ -89,10 +89,11 @@
             <td style="color:#6b7280;padding:5px 0;">Nota Fiscal</td>
             <td>
               {{ os.nota_fiscal or '—' }}
-              {% if os.foto_nf %}
-              {% set nf_url = os.foto_nf if os.foto_nf.startswith('http') else url_for('static', filename=os.foto_nf) %}
+              {% set nf = os.anexos | selectattr('categoria', 'equalto', 'nota_fiscal') | first %}
+              {% if nf %}
+              {% set nf_url = url_for('ver_anexo', os_id=os.id, anexo_id=nf.id) %}
               &nbsp;
-              {% if os.foto_nf|eh_pdf %}
+              {% if nf.formato == 'pdf' %}
               <a href="{{ nf_url }}" target="_blank" title="Abrir nota fiscal em PDF"
                  style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:5px;
                         border:1px solid #dde3f0;background:#fff;color:#d42b2b;font-size:12px;
@@ -127,14 +128,13 @@
   <!-- Defeito -->
   <div class="card" style="margin-top:20px;">
     <div class="section-title">Defeito Informado pelo Cliente</div>
-    <p style="font-size:14px;line-height:1.6;color:#374151;margin-bottom:{% if os.fotos_defeito %}16px{% else %}0{% endif %};">{{ os.defeito or 'Nenhum defeito informado.' }}</p>
-    {% if os.fotos_defeito %}
-      {% set fotos = os.fotos_defeito | from_json %}
-      {% if fotos %}
+    {% set fotos_defeito = os.anexos | selectattr('categoria', 'equalto', 'defeito') | list %}
+    <p style="font-size:14px;line-height:1.6;color:#374151;margin-bottom:{% if fotos_defeito %}16px{% else %}0{% endif %};">{{ os.defeito or 'Nenhum defeito informado.' }}</p>
+    {% if fotos_defeito %}
       <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;">
-        {% for foto in fotos %}
-        {% set foto_url = foto if foto.startswith('http') else url_for('static', filename=foto) %}
-        {% if foto|eh_pdf %}
+        {% for anexo in fotos_defeito %}
+        {% set foto_url = url_for('ver_anexo', os_id=os.id, anexo_id=anexo.id) %}
+        {% if anexo.formato == 'pdf' %}
         <a href="{{ foto_url }}" target="_blank" title="Abrir anexo em PDF"
            style="width:120px;height:90px;display:flex;flex-direction:column;align-items:center;
                   justify-content:center;gap:6px;border-radius:8px;border:1.5px solid #dde3f0;
@@ -153,7 +153,6 @@
         {% endif %}
         {% endfor %}
       </div>
-      {% endif %}
     {% endif %}
   </div>
 
@@ -173,8 +172,9 @@
           <td>{{ peca.quantidade }}</td>
           <td style="color:#6b7280;">{{ peca.observacoes or '—' }}</td>
           <td>
-            {% if peca.foto %}
-            {% set peca_url = peca.foto if peca.foto.startswith('http') else url_for('static', filename=peca.foto) %}
+            {% set foto_peca = peca.anexos | first %}
+            {% if foto_peca %}
+            {% set peca_url = url_for('ver_anexo', os_id=os.id, anexo_id=foto_peca.id) %}
             <a href="{{ peca_url }}" target="_blank">
               <img src="{{ peca_url }}"
                    style="width:50px;height:38px;object-fit:cover;border-radius:5px;border:1px solid #dde3f0;cursor:pointer;">

@@ -194,10 +194,11 @@
       </div>
       <div class="form-group">
         <label class="form-label">Foto / Scan da NF</label>
-        {% if os.foto_nf %}
+        {% set nf = os.anexos | selectattr('categoria', 'equalto', 'nota_fiscal') | first %}
+        {% if nf %}
         <div style="margin-bottom:6px;">
-          {% set nf_url = os.foto_nf if os.foto_nf.startswith('http') else url_for('static', filename=os.foto_nf) %}
-          {% if os.foto_nf|eh_pdf %}
+          {% set nf_url = url_for('ver_anexo', os_id=os.id, anexo_id=nf.id) %}
+          {% if nf.formato == 'pdf' %}
           <a href="{{ nf_url }}" target="_blank"
              style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-radius:6px;
                     border:1px solid #dde3f0;background:#fff;color:#d42b2b;font-size:12.5px;
@@ -215,7 +216,7 @@
         {% endif %}
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;border:1.5px dashed var(--border);border-radius:8px;padding:9px 12px;background:#f8fbff;" id="label-foto-nf">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0077c8" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>
-          <span id="txt-foto-nf" style="font-size:12.5px;color:#0077c8;font-weight:600;">{{ 'Substituir imagem' if os.foto_nf else 'Anexar imagem' }}</span>
+          <span id="txt-foto-nf" style="font-size:12.5px;color:#0077c8;font-weight:600;">{{ 'Substituir imagem' if nf else 'Anexar imagem' }}</span>
           <input type="file" name="foto_nf" id="input-foto-nf" accept="image/*,.pdf" style="display:none" onchange="atualizarFotoNF(this)">
         </label>
         <div id="preview-foto-nf" style="margin-top:6px;"></div>

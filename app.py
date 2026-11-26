@@ -240,40 +240,7 @@ def rate_limit_exceeded(e):
 
 # ── Helpers ──────────────────────────────────────────────────────
 
-def salvar_foto(foto):
-    """Upload para o Cloudinary, preservando o nome e a extensão do arquivo.
-
-    resource_type='auto' deixa o Cloudinary identificar o tipo, PDF incluído.
-    use_filename mantém o nome original (e com ele a extensão) no lugar de um ID
-    aleatório, e unique_filename acrescenta um sufixo curto para que dois arquivos
-    de mesmo nome não se sobrescrevam. Sem a extensão na URL, o Windows não
-    reconhece o anexo baixado e não consegue abri-lo.
-    """
-    if not foto or not foto.filename:
-        return None
-    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME')
-    api_key = os.environ.get('CLOUDINARY_API_KEY')
-    api_secret = os.environ.get('CLOUDINARY_API_SECRET')
-    if not (cloud_name and api_key and api_secret):
-        return None
-    cloudinary.config(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
-    result = cloudinary.uploader.upload(
-        foto,
-        folder='minipa_os',
-        resource_type='auto',
-        use_filename=True,
-        unique_filename=True,
-    )
-    url = result.get('secure_url')
-    # Se a extensão não vier na URL, registra — é o sintoma que quebra o download.
-    ext = foto.filename.rsplit('.', 1)[-1].lower() if '.' in foto.filename else ''
-    if url and ext and not url.lower().split('?')[0].endswith(f'.{ext}'):
-        app.logger.warning('Upload sem extensão .%s na URL retornada: %s', ext, url)
-    return url
-
 # ── Anexos servidos pela rota própria ────────────────────────────────────────
-# Nada abaixo é chamado ainda: o upload e os templates passam a usar isto num
-# commit seguinte, depois que o backfill tiver populado a tabela.
 
 FORMATOS_MIME = {
     'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
@@ -1188,10 +1155,6 @@ def nova_os():
             filial_id=filial_id,
         )
         foto_nf_file = request.files.get('foto_nf')
-        if foto_nf_file and foto_nf_file.filename:
-            caminho_nf = salvar_foto(foto_nf_file)
-            if caminho_nf:
-                nova.foto_nf = caminho_nf
         db.session.add(nova)
         try:
             db.session.flush()
@@ -1200,6 +1163,10 @@ def nova_os():
             app.logger.exception('Erro ao criar OS')
             flash('Erro ao criar OS. Tente novamente.', 'error')
             return render_template('nova_os.html', tabela=tabela, filiais=filiais, now=brt_now())
+        # Anexos só depois do flush, que é quando nova.id existe
+        _registrar_anexo(foto_nf_file, nova.id, 'nota_fiscal')
+        for foto in request.files.getlist('fotos_defeito[]'):
+            _registrar_anexo(foto, nova.id, 'defeito')
         # Peças
         codigos = request.form.getlist('peca_codigo[]')
         descricoes = request.form.getlist('peca_descricao[]')
@@ -1208,13 +1175,15 @@ def nova_os():
         fotos_peca = request.files.getlist('peca_foto[]')
         for i in range(len(codigos)):
             if descricoes[i].strip():
-                # A foto da peça é opcional e vem na mesma ordem dos demais campos
-                foto_peca = fotos_peca[i] if i < len(fotos_peca) else None
-                caminho_peca = salvar_foto(foto_peca) if foto_peca and foto_peca.filename else None
                 peca = PecaOS(os_id=nova.id, codigo=codigos[i],
                               descricao=descricoes[i], quantidade=int(quantidades[i] or 1),
-                              observacoes=obs_list[i], foto=caminho_peca)
+                              observacoes=obs_list[i])
                 db.session.add(peca)
+                # A foto da peça é opcional e vem na mesma ordem dos demais campos
+                foto_peca = fotos_peca[i] if i < len(fotos_peca) else None
+                if foto_peca and foto_peca.filename:
+                    db.session.flush()      # precisa de peca.id para vincular o anexo
+                    _registrar_anexo(foto_peca, nova.id, 'peca', peca_id=peca.id)
         db.session.add(LogOS(os_id=nova.id, usuario=current_user.nome_completo,
                               tipo='criacao', descricao=f'OS criada com status "{nova.status}"'))
         try:
@@ -1269,22 +1238,13 @@ def editar_os(id):
         os_data.defeito = request.form.get('defeito', os_data.defeito)
         os_data.tipo_servico = request.form.get('tipo_servico', os_data.tipo_servico)
         os_data.valor = request.form.get('valor', os_data.valor)
-        # Upload foto NF
-        foto_nf_file = request.files.get('foto_nf')
-        if foto_nf_file and foto_nf_file.filename:
-            caminho_nf = salvar_foto(foto_nf_file)
-            if caminho_nf:
-                os_data.foto_nf = caminho_nf
-        # Novas fotos do defeito
-        novas_fotos = []
+        # Anexos: substituir a nota fiscal remove a anterior; fotos de defeito somam
+        if request.files.get('foto_nf') and request.files['foto_nf'].filename:
+            for antigo in [a for a in os_data.anexos if a.categoria == 'nota_fiscal']:
+                db.session.delete(antigo)
+            _registrar_anexo(request.files['foto_nf'], os_data.id, 'nota_fiscal')
         for foto in request.files.getlist('fotos_defeito[]'):
-            caminho = salvar_foto(foto)
-            if caminho:
-                novas_fotos.append(caminho)
-        if novas_fotos:
-            fotos_existentes = json.loads(os_data.fotos_defeito or '[]')
-            fotos_existentes.extend(novas_fotos)
-            os_data.fotos_defeito = json.dumps(fotos_existentes)
+            _registrar_anexo(foto, os_data.id, 'defeito')
         if novo_status != status_anterior:
             tipo = 'peca_solicitada' if novo_status == 'Aguardando peça' else \
                    'peca_enviada' if novo_status == 'Peça enviada' else 'status'

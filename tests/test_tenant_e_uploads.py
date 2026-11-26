@@ -276,7 +276,11 @@ def test_nota_fiscal_aceita_tipos_validos(ctx, conteudo, nome):
     r = criar_os(entrar('tecnico'), foto_nf=arquivo(conteudo, nome))
     assert r.status_code == 200
     with flask_app.app_context():
-        assert OrdemServico.query.one().foto_nf is not None
+        anexo = Anexo.query.filter_by(categoria='nota_fiscal').one()
+        assert anexo.tipo_entrega == 'authenticated'
+        assert anexo.nome_original == nome
+        # o public_id não pode carregar o nome original do arquivo
+        assert nome.rsplit('.', 1)[0] not in anexo.public_id
 
 
 @pytest.mark.parametrize('conteudo,nome,rotulo', [
@@ -340,7 +344,9 @@ def test_peca_com_foto_e_gravada(ctx):
     with flask_app.app_context():
         p = PecaOS.query.one()
         assert p.descricao == 'Display LCD' and p.quantidade == 2
-        assert p.foto and p.foto.startswith('https://res.cloudinary.com/')
+        anexo = Anexo.query.filter_by(categoria='peca').one()
+        assert anexo.peca_id == p.id
+        assert anexo.tipo_entrega == 'authenticated'
 
 
 def test_peca_sem_foto_e_gravada(ctx):
@@ -369,9 +375,9 @@ def test_foto_da_peca_aparece_na_os(ctx):
                          'peca_foto[]': arquivo(PNG, 'display.png')})
     with flask_app.app_context():
         oid = OrdemServico.query.one().id
-        url = PecaOS.query.one().foto
+        anexo_id = Anexo.query.filter_by(categoria='peca').one().id
     html = cliente.get(f'/os/{oid}').get_data(as_text=True)
-    assert url in html
+    assert f'/os/{oid}/anexo/{anexo_id}' in html
 
 
 # ══════════════ Regressão: escopo de leitura ══════════════
@@ -594,3 +600,20 @@ def test_backfill_cria_registros_e_e_idempotente(ctx):
         assert od.foto_nf == URL_LEGADA
         assert od.fotos_defeito is not None
         assert PecaOS.query.filter_by(os_id=os_id).one().foto is not None
+
+
+def test_url_do_cloudinary_nunca_chega_ao_html(ctx):
+    """O requisito central: o anexo só é alcançável pela rota do sistema."""
+    cliente = entrar('tecnico')
+    criar_os(cliente, foto_nf=arquivo(PDF, 'nota.pdf'),
+             **{'fotos_defeito[]': arquivo(JPG, 'defeito.jpg'),
+                'peca_codigo[]': 'P1', 'peca_descricao[]': 'Peca',
+                'peca_quantidade[]': '1', 'peca_obs[]': '',
+                'peca_foto[]': arquivo(PNG, 'peca.png')})
+    with flask_app.app_context():
+        oid = OrdemServico.query.one().id
+        assert Anexo.query.filter_by(os_id=oid).count() == 3
+    for rota in (f'/os/{oid}', f'/os/{oid}/editar'):
+        html = cliente.get(rota).get_data(as_text=True)
+        assert 'res.cloudinary.com' not in html, rota
+        assert f'/os/{oid}/anexo/' in html, rota
