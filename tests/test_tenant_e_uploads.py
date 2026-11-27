@@ -689,3 +689,163 @@ def test_api_e_download_falhando_nao_quebram(cloudinary_consultado):
     cloudinary_consultado['api'] = None        # levanta
     cloudinary_consultado['conteudo'] = None   # levanta
     assert descobrir_formato(dict(BASE_SEM_FORMATO)) == ('', 'não identificado')
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Suspensão de acesso por autorizada
+# ══════════════════════════════════════════════════════════════════════════
+
+def bloquear(filial_id, cliente=None, acao='bloquear'):
+    c = cliente or entrar('admin')
+    return c.post('/autorizadas',
+                  data={'action': acao, 'id': str(filial_id)},
+                  follow_redirects=True)
+
+
+def esta_bloqueada(filial_id):
+    with flask_app.app_context():
+        return bool(db.session.get(Filial, filial_id).acesso_bloqueado)
+
+
+def logado(cliente):
+    """True se o cliente tem sessão válida — o dashboard responde sem redirecionar."""
+    return cliente.get('/dashboard').status_code == 200
+
+
+def test_tecnico_da_autorizada_bloqueada_nao_entra(ctx):
+    bloquear(ctx['filiais']['info'])
+    c = flask_app.test_client()
+    r = c.post('/', data={'username': 'tecnico', 'password': '123'}, follow_redirects=True)
+    assert 'Acesso temporariamente suspenso' in r.data.decode()
+    assert not logado(c), 'a sessão não pode ser aberta'
+
+
+def test_senha_certa_nao_abre_sessao_quando_suspenso(ctx):
+    """A suspensão é verificada depois da senha: senha válida ainda assim não entra."""
+    bloquear(ctx['filiais']['info'])
+    c = flask_app.test_client()
+    c.post('/', data={'username': 'tecnico', 'password': '123'})
+    assert not logado(c)
+
+
+def test_sessao_aberta_cai_na_proxima_requisicao(ctx):
+    c = entrar('tecnico')
+    assert logado(c), 'o técnico entra normalmente antes do bloqueio'
+    bloquear(ctx['filiais']['info'])
+    r = c.get('/dashboard', follow_redirects=True)
+    assert 'Acesso temporariamente suspenso' in r.data.decode()
+    assert not logado(c), 'a sessão tem de ser encerrada, não só redirecionada'
+
+
+def test_desbloquear_devolve_o_acesso(ctx):
+    bloquear(ctx['filiais']['info'])
+    bloquear(ctx['filiais']['info'], acao='desbloquear')
+    assert not esta_bloqueada(ctx['filiais']['info'])
+    assert logado(entrar('tecnico'))
+
+
+def test_supervisor_da_autorizada_bloqueada_continua_entrando(ctx):
+    """O supervisor responde por várias autorizadas; suspender uma não o derruba.
+
+    O fixture dá a ele filial_id=voltcom, exatamente o caso que não deve pegar.
+    """
+    bloquear(ctx['filiais']['voltcom'])
+    assert logado(entrar('supervisor'))
+
+
+@pytest.mark.parametrize('papel', ['admin', 'gerente'])
+def test_admin_e_gerente_nunca_sao_bloqueados(ctx, papel):
+    for fid in ctx['filiais'].values():
+        bloquear(fid)
+    assert logado(entrar(papel))
+
+
+def test_bloqueio_nao_alcanca_outra_autorizada(ctx):
+    bloquear(ctx['filiais']['voltcom'])
+    assert logado(entrar('tecnico')), 'o técnico da Info Eletro não foi suspenso'
+
+
+def test_bloqueio_nao_mexe_no_campo_ativa(ctx):
+    bloquear(ctx['filiais']['info'])
+    with flask_app.app_context():
+        f = db.session.get(Filial, ctx['filiais']['info'])
+        assert f.ativa is True, 'ativa e acesso_bloqueado são independentes'
+
+
+def test_os_da_autorizada_bloqueada_continuam_visiveis(ctx):
+    criar_os(entrar('admin'), filial_id=ctx['filiais']['info'])
+    bloquear(ctx['filiais']['info'])
+    assert total_os() == 1, 'nada é apagado'
+    for papel in ('admin', 'gerente', 'supervisor'):
+        r = entrar(papel).get('/dashboard')
+        assert 'Cliente Teste' in r.data.decode(), papel
+
+
+def test_gerente_nao_consegue_bloquear(ctx):
+    r = bloquear(ctx['filiais']['info'], cliente=entrar('gerente'))
+    assert 'Somente o administrador' in r.data.decode()
+    assert not esta_bloqueada(ctx['filiais']['info'])
+    assert logado(entrar('tecnico'))
+
+
+def test_tecnico_nao_consegue_bloquear(ctx):
+    bloquear(ctx['filiais']['voltcom'], cliente=entrar('tecnico'))
+    assert not esta_bloqueada(ctx['filiais']['voltcom'])
+
+
+def test_log_registra_quem_bloqueou_e_quem_liberou(ctx):
+    from database import LogAcesso
+    bloquear(ctx['filiais']['info'])
+    bloquear(ctx['filiais']['info'], acao='desbloquear')
+    with flask_app.app_context():
+        logs = LogAcesso.query.order_by(LogAcesso.id).all()
+        assert [l.acao for l in logs] == ['bloqueio', 'desbloqueio']
+        for l in logs:
+            assert l.usuario == 'Admin'
+            assert l.filial_nome == 'Info Eletro'
+            assert l.data is not None
+
+
+def test_etiqueta_bloqueada_aparece_na_listagem(ctx):
+    html = entrar('admin').get('/autorizadas').data.decode()
+    assert 'Bloqueada' not in html
+    bloquear(ctx['filiais']['info'])
+    assert 'Bloqueada' in entrar('admin').get('/autorizadas').data.decode()
+
+
+def test_botao_de_bloqueio_nao_aparece_para_gerente(ctx):
+    html = entrar('gerente').get('/autorizadas').data.decode()
+    assert 'value="bloquear"' not in html
+    assert 'value="bloquear"' in entrar('admin').get('/autorizadas').data.decode()
+
+
+def test_login_recusa_na_origem_sem_abrir_sessao(ctx):
+    """O login barra antes de criar a sessão, não depois.
+
+    Sem esta verificação o login_user() passa e só o before_request derruba o
+    usuário na requisição seguinte — a mensagem até aparece, mas um cookie de
+    sessão válido chega a existir. Seguir o redirecionamento esconde isso, então
+    aqui a resposta é examinada crua: tem de ser a própria tela de login (200),
+    não um 302 para o dashboard.
+    """
+    bloquear(ctx['filiais']['info'])
+    c = flask_app.test_client()
+    r = c.post('/', data={'username': 'tecnico', 'password': '123'})
+    assert r.status_code == 200, f'redirecionou ({r.status_code}) — a sessão foi aberta'
+    assert 'Acesso temporariamente suspenso' in r.data.decode()
+
+
+@pytest.mark.parametrize('papel', ['admin', 'gerente'])
+def test_papel_poupa_mesmo_com_filial_id_apontando_para_bloqueada(ctx, papel):
+    """A isenção é pelo papel, não por acaso de filial_id estar vazio.
+
+    Admin e gerente normalmente não têm filial_id — a tela de vínculo o anula.
+    Mas uma linha antiga pode ter, e nesse caso o papel é que tem de valer:
+    sem a cláusula do papel, este usuário seria derrubado.
+    """
+    with flask_app.app_context():
+        u = db.session.get(User, ctx['users'][papel])
+        u.filial_id = ctx['filiais']['info']
+        db.session.commit()
+    bloquear(ctx['filiais']['info'])
+    assert logado(entrar(papel))

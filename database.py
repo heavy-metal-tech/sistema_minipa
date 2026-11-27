@@ -23,6 +23,26 @@ class Filial(db.Model):
     estado = db.Column(db.String(2))
     email = db.Column(db.String(150))
     ativa = db.Column(db.Boolean, default=True)
+    # Suspensão de acesso: impede o login dos usuários vinculados por filial_id
+    # sem apagar nada. Separado de 'ativa', que controla se a autorizada aparece
+    # como opção ao abrir uma OS — uma autorizada suspensa segue ativa e suas OS
+    # continuam no sistema.
+    acesso_bloqueado = db.Column(db.Boolean, default=False)
+
+class LogAcesso(db.Model):
+    """Histórico de quem suspendeu e quem liberou o acesso de uma autorizada.
+
+    Tabela própria porque LogOS exige uma OS (os_id NOT NULL) e isto não é um
+    evento de OS. Guarda o nome da autorizada junto: se ela for removida depois,
+    o registro de quem bloqueou o acesso continua legível.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    filial_id = db.Column(db.Integer, db.ForeignKey('filial.id', ondelete='SET NULL'),
+                          nullable=True, index=True)
+    filial_nome = db.Column(db.String(150))
+    data = db.Column(db.DateTime, default=brt_now)
+    usuario = db.Column(db.String(100))
+    acao = db.Column(db.String(20))   # 'bloqueio' | 'desbloqueio'
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
