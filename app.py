@@ -17,7 +17,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from datetime import datetime
 from database import (db, User, OrdemServico, Estoque, TabelaPreco, PecaOS, Filial,
-                      supervisor_autorizadas, LogOS, Anexo, brt_now)
+                      supervisor_autorizadas, LogOS, LogAcesso, Anexo, brt_now)
 
 app = Flask(__name__)
 _secret = os.environ.get('SECRET_KEY')
@@ -226,6 +226,42 @@ login_manager.login_view = 'login'
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+MSG_ACESSO_SUSPENSO = 'Acesso temporariamente suspenso. Fale com o administrador.'
+
+
+def _acesso_suspenso(user):
+    """True se o acesso deste usuário está suspenso pela autorizada dele.
+
+    A suspensão alcança só quem está vinculado diretamente por filial_id — o
+    login da própria autorizada e os técnicos dela. Admin e gerente nunca são
+    alcançados. Supervisor também não: ele responde por várias autorizadas e
+    precisa continuar enxergando as OS da que foi suspensa, então derrubá-lo
+    por causa de um filial_id herdado tiraria o acesso dele às outras.
+    """
+    if not user or user.is_admin or user.is_gerente or user.is_supervisor:
+        return False
+    if not user.filial_id:
+        return False
+    return bool(user.filial and user.filial.acesso_bloqueado)
+
+
+@app.before_request
+def encerrar_sessao_suspensa():
+    """Derruba na próxima requisição quem foi suspenso com a sessão aberta.
+
+    Vem antes da troca de senha obrigatória para que o usuário suspenso caia
+    direto no login, em vez de passar pela tela de senha antes.
+    """
+    if not current_user.is_authenticated:
+        return None
+    if request.endpoint in ('login', 'logout', 'static'):
+        return None
+    if _acesso_suspenso(current_user):
+        logout_user()
+        flash(MSG_ACESSO_SUSPENSO, 'error')
+        return redirect(url_for('login'))
+    return None
 
 @app.before_request
 def check_must_change_password():
@@ -959,6 +995,9 @@ def login():
             return render_template('login.html')
         user = User.query.filter(db.func.lower(User.username) == username.lower()).first()
         if user and check_password_hash(user.password, password):
+            if _acesso_suspenso(user):
+                flash(MSG_ACESSO_SUSPENSO, 'error')
+                return render_template('login.html')
             login_user(user)
             return redirect(url_for('dashboard'))
         flash('Usuário ou senha inválidos.', 'error')
@@ -1610,6 +1649,31 @@ def autorizadas():
                     flash(f'Autorizada "{antigo}" atualizada para "{nome}".', 'success')
                 else:
                     flash(f'Autorizada "{nome}" atualizada.', 'success')
+        elif action in ('bloquear', 'desbloquear'):
+            # A tela é aberta para gerente também, mas suspender acesso é só do admin.
+            if not current_user.is_admin:
+                flash('Somente o administrador pode suspender ou liberar o acesso '
+                      'de uma autorizada.', 'error')
+            else:
+                try:
+                    f = Filial.query.get(int(request.form.get('id')))
+                except (TypeError, ValueError):
+                    f = None
+                if not f:
+                    flash('Autorizada não encontrada.', 'error')
+                else:
+                    bloquear = action == 'bloquear'
+                    f.acesso_bloqueado = bloquear
+                    db.session.add(LogAcesso(
+                        filial_id=f.id, filial_nome=f.nome,
+                        usuario=current_user.nome_completo or current_user.username,
+                        acao='bloqueio' if bloquear else 'desbloqueio'))
+                    if bloquear:
+                        flash(f'Acesso de "{f.nome}" suspenso. Os logins vinculados a ela não '
+                              f'entram mais, e quem estiver com a sessão aberta cai na próxima '
+                              f'página. As OS continuam no sistema.', 'success')
+                    else:
+                        flash(f'Acesso de "{f.nome}" liberado.', 'success')
         elif action == 'delete':
             f = Filial.query.get(int(request.form.get('id')))
             if f: db.session.delete(f)
@@ -1653,7 +1717,9 @@ def autorizadas():
     supervisores = User.query.filter_by(is_supervisor=True).options(
         _jl(User.autorizadas_supervisionadas)
     ).all()
-    return render_template('autorizadas.html', filiais=lista, usuarios=usuarios, supervisores=supervisores)
+    logs_acesso = LogAcesso.query.order_by(LogAcesso.data.desc()).limit(30).all()
+    return render_template('autorizadas.html', filiais=lista, usuarios=usuarios,
+                           supervisores=supervisores, logs_acesso=logs_acesso)
 
 @app.route('/logs')
 @login_required
@@ -2174,6 +2240,17 @@ def _init_db():
             enviado_em TIMESTAMP DEFAULT NOW(),
             enviado_por VARCHAR(100)
         )''',
+        # ── Suspensão de acesso por autorizada. Aditivo: 'ativa' continua como está.
+        'ALTER TABLE filial ADD COLUMN IF NOT EXISTS acesso_bloqueado BOOLEAN DEFAULT FALSE',
+        '''CREATE TABLE IF NOT EXISTS log_acesso (
+            id SERIAL PRIMARY KEY,
+            filial_id INTEGER REFERENCES filial(id) ON DELETE SET NULL,
+            filial_nome VARCHAR(150),
+            data TIMESTAMP DEFAULT NOW(),
+            usuario VARCHAR(100),
+            acao VARCHAR(20)
+        )''',
+        'CREATE INDEX IF NOT EXISTS idx_log_acesso_filial ON log_acesso(filial_id)',
         'CREATE INDEX IF NOT EXISTS idx_anexo_os_id ON anexo(os_id)',
         # Torna o backfill idempotente: o mesmo arquivo não entra duas vezes na OS
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_anexo_unico ON anexo(os_id, public_id)',

@@ -30,17 +30,37 @@
                 <button type="submit" style="font-size:11px;padding:4px 8px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;">✓</button>
               </form>
             </td>
-            <td>
+            <td style="white-space:nowrap;">
               {% if f.ativa %}
                 <span class="badge" style="background:#f0fdf4;color:#16a34a;">Ativa</span>
               {% else %}
                 <span class="badge" style="background:#fef2f2;color:#d42b2b;">Inativa</span>
+              {% endif %}
+              {% if f.acesso_bloqueado %}
+                <span class="badge" style="background:#fef2f2;color:#d42b2b;border:1px solid #fecaca;"
+                      title="Os logins vinculados a esta autorizada não conseguem entrar">🔒 Bloqueada</span>
               {% endif %}
             </td>
             <td style="white-space:nowrap;">
               <button type="button" onclick="editarAutorizada({{ f.id }}, true)"
                 title="Editar dados da autorizada"
                 style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:15px;padding:2px 4px;">✏️</button>
+              {% if current_user.is_admin %}
+              <form method="POST" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="{{ 'desbloquear' if f.acesso_bloqueado else 'bloquear' }}">
+                <input type="hidden" name="id" value="{{ f.id }}">
+                {% if f.acesso_bloqueado %}
+                <button type="submit" title="Liberar o acesso dos usuários desta autorizada"
+                  onclick="return confirm('Liberar o acesso de {{ f.nome }}?')"
+                  style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;">🔓</button>
+                {% else %}
+                <button type="submit" title="Bloquear o acesso dos usuários desta autorizada"
+                  onclick="return confirm('Bloquear o acesso dos usuários de {{ f.nome }}?\n\nEles não conseguirão entrar e quem estiver logado cai na próxima página. Nenhuma OS é apagada.')"
+                  style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;">🔒</button>
+                {% endif %}
+              </form>
+              {% endif %}
               <form method="POST" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="delete">
@@ -127,6 +147,34 @@
           <button type="submit" class="btn btn-primary" style="width:100%;">Cadastrar Autorizada</button>
         </form>
       </div>
+
+      <!-- Histórico de suspensão de acesso -->
+      {% if logs_acesso %}
+      <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:10px;">Histórico de Bloqueios de Acesso</div>
+        <table>
+          <thead><tr><th>Data / Hora</th><th>Autorizada</th><th>Ação</th><th>Por</th></tr></thead>
+          <tbody>
+            {% for log in logs_acesso %}
+            <tr>
+              <td style="white-space:nowrap;color:#6b7280;font-size:12px;">
+                {{ log.data.strftime('%d/%m/%Y %H:%M') if log.data else '—' }}
+              </td>
+              <td style="font-size:13px;">{{ log.filial_nome or '—' }}</td>
+              <td>
+                {% if log.acao == 'bloqueio' %}
+                  <span class="badge" style="background:#fef2f2;color:#d42b2b;">🔒 Bloqueou</span>
+                {% else %}
+                  <span class="badge" style="background:#f0fdf4;color:#16a34a;">🔓 Liberou</span>
+                {% endif %}
+              </td>
+              <td style="font-size:13px;color:#374151;">{{ log.usuario or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
     </div>
 
     <!-- Vincular usuário a autorizada -->
